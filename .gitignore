@@ -1,0 +1,11 @@
+# 会话内部数据（记忆、配置、缓存），不进版本库
+.workbuddy/
+
+# 审计脚本生成的截图（每次跑 audit.js 会重新生成）
+analysis/*.png
+
+# 依赖与系统文件
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini

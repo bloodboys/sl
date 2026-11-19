@@ -1,0 +1,3912 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>扫雷 — Minesweeper</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --accent:#0f6cbd;
+    --accent-strong:#0b5a9e;
+    --accent-soft:#e7f0fa;
+    --win-bg:#f7f8fb;
+    --surface:#ffffff;
+    --text:#1b1f24;
+    --muted:#5d6673;
+    --text-3:#656e7c;
+    --line:#e4e8ef;
+    --line-strong:#d6dce6;
+    --shadow-win:0 24px 60px rgba(20,40,80,.20), 0 4px 14px rgba(20,40,80,.10);
+    --cell:36px;
+    --cols:9;
+  }
+  html,body{height:100%}
+  body{
+    font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Microsoft YaHei",\5FAE\8F6F\96C5\9ED1,sans-serif;
+    color:var(--text);
+    background:
+      radial-gradient(1100px 700px at 12% 6%, #e9f2ff 0%, rgba(233,242,255,0) 62%),
+      radial-gradient(900px 640px at 88% 96%, #e6ecfb 0%, rgba(230,236,251,0) 60%),
+      linear-gradient(160deg,#f2f6fc 0%, #eef1f8 46%, #e9edf6 100%);
+    min-height:100%;
+    display:flex;
+    padding:28px 20px;
+    -webkit-font-smoothing:antialiased;
+    user-select:none;
+    -webkit-user-select:none;
+    overflow-x:hidden;
+  }
+
+  /* ============ 窗口 ============ */
+  .window{
+    width:max-content;
+    min-width:min(398px, calc(100vw - 32px));
+    /* 用 margin:auto 而不是 justify/align-center：窗口比视口高时不会把顶部裁掉 */
+    margin:auto;
+    background:var(--win-bg);
+    border-radius:12px;
+    box-shadow:var(--shadow-win);
+    border:1px solid rgba(255,255,255,.9);
+    outline:1px solid rgba(160,175,200,.22);
+    overflow:hidden;
+    transform:translate(var(--dx,0px), var(--dy,0px));
+    animation:winIn .42s cubic-bezier(.16,.84,.34,1) both;
+  }
+  @keyframes winIn{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1}}
+  .window.min{transform:none}
+  .window.min .content{display:none}
+  .window.max{
+    position:fixed;inset:16px;width:auto;height:auto;transform:none;
+    display:flex;flex-direction:column;
+  }
+  .window.max .content{flex:1;min-height:0;overflow:auto}
+  .window.max .titlebar{cursor:default}
+  .window[hidden]{display:none !important}
+  .reopen{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+    border:1px solid var(--line-strong);background:var(--surface);color:var(--text);
+    font-family:inherit;font-size:12.5px;font-weight:600;padding:9px 16px;border-radius:10px;
+    box-shadow:0 8px 24px rgba(20,40,80,.18);cursor:pointer;z-index:70;
+  }
+  .reopen:hover{background:var(--accent-soft);color:var(--accent)}
+  .reopen[hidden]{display:none}
+
+  .titlebar{
+    height:40px;display:flex;align-items:center;justify-content:space-between;
+    padding-left:14px;
+    background:linear-gradient(180deg,#fdfdff,#f3f5f9);
+    border-bottom:1px solid var(--line);
+    cursor:default;
+    touch-action:none;
+  }
+  .tb-left{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;letter-spacing:.2px}
+  .app-icon{
+    width:20px;height:20px;border-radius:5px;
+    background:linear-gradient(160deg,#3a8ee6,#0f62b3);
+    display:grid;place-items:center;box-shadow:0 1px 2px rgba(15,98,179,.35);
+  }
+  .app-icon svg{width:13px;height:13px;display:block}
+  .tb-right{display:flex;height:100%}
+  .wbtn{
+    width:46px;height:100%;border:0;background:transparent;color:#3d4653;
+    font-size:11px;display:grid;place-items:center;cursor:default;
+    transition:background .12s,color .12s;font-family:inherit;
+  }
+  .wbtn:hover{background:#e8ebf1}
+  .wbtn.close:hover{background:#e81123;color:#fff}
+  .wbtn svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.4;fill:none}
+
+  .content{padding:14px}
+
+  /* ============ 工具栏 ============ */
+  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .seg{
+    display:flex;gap:2px;padding:3px;background:#eceff5;border-radius:9px;
+    border:1px solid rgba(198,208,222,.55);
+  }
+  .seg button{
+    border:0;background:transparent;font-family:inherit;font-size:12.5px;font-weight:600;
+    color:var(--muted);padding:6px 12px;border-radius:7px;cursor:pointer;
+    transition:background .15s,color .15s,box-shadow .15s;white-space:nowrap;
+  }
+  .seg button:hover{background:rgba(255,255,255,.75);color:var(--text)}
+  .seg button.active{background:var(--surface);color:var(--accent);box-shadow:0 1px 2px rgba(25,45,80,.13),0 0 0 1px rgba(190,205,225,.5)}
+  .spacer{flex:1}
+  .best{
+    font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;
+    display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;
+    background:rgba(255,255,255,.75);border:1px solid var(--line);white-space:nowrap;
+  }
+  .best b{color:var(--text);font-weight:600}
+  .best svg{width:12px;height:12px;fill:#e0a020}
+
+  /* ============ HUD ============ */
+  .hud{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+  .chip{
+    display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:10px;
+    background:var(--surface);border:1px solid var(--line);
+    box-shadow:0 1px 2px rgba(30,50,80,.05);
+    min-width:96px;
+  }
+  .chip svg{width:15px;height:15px;flex:none}
+  .chip .num{
+    font-size:16px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:.6px;
+    color:#20262e;
+  }
+  .chip.shake{animation:shake .3s ease}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
+
+  .face{
+    width:46px;height:46px;border-radius:12px;border:1px solid var(--line-strong);
+    background:linear-gradient(180deg,#ffffff,#f1f4f9);
+    font-size:23px;line-height:1;cursor:pointer;display:grid;place-items:center;
+    box-shadow:0 1px 3px rgba(30,50,80,.1),inset 0 1px 0 #fff;
+    transition:transform .1s,box-shadow .15s,background .15s;
+  }
+  .face:hover{background:linear-gradient(180deg,#fff,#eaf1fa);box-shadow:0 3px 8px rgba(30,50,80,.14),inset 0 1px 0 #fff}
+  .face:active{transform:scale(.94)}
+
+  /* ============ 棋盘 ============ */
+  .board-wrap{
+    position:relative;
+    border-radius:10px;
+    background:#e9eef6;
+    padding:10px;
+    border:1px solid #dde3ed;
+    box-shadow:inset 0 1px 3px rgba(40,60,100,.09);
+  }
+  .board{
+    display:grid;
+    grid-template-columns:repeat(var(--cols),var(--cell));
+    gap:2px;
+    justify-content:center;
+    margin:0 auto;
+  }
+  .cell{
+    width:var(--cell);height:var(--cell);
+    border-radius:5px;
+    display:grid;place-items:center;
+    position:relative;
+    font-size:calc(var(--cell) * .56);
+    font-weight:700;
+    line-height:1;
+    font-variant-numeric:tabular-nums;
+    cursor:pointer;
+    background:linear-gradient(180deg,#e3eaf5 0%,#ccd7e9 100%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(140,162,196,.28), 0 1px 2px rgba(35,55,95,.10);
+    transition:background .12s, transform .07s, box-shadow .12s;
+  }
+  .cell:hover{background:linear-gradient(180deg,#eff4fc 0%,#dbe5f4 100%)}
+  .cell:active{transform:scale(.955)}
+  .cell svg{width:66%;height:66%;display:block;pointer-events:none}
+
+  .cell.open{
+    background:#f6f8fc;
+    box-shadow:inset 0 0 0 1px #e5eaf3;
+    cursor:default;
+    transform:none;
+  }
+  .cell.open:hover{background:#f8fafd}
+  .cell.open:active{transform:none}
+
+  .cell.mine{background:#fdeaea;box-shadow:inset 0 0 0 1px #f7d3d3}
+  .cell.mine.dim{background:#f4f1f1;opacity:.75}
+  .cell.boom{background:#f0625f !important;box-shadow:inset 0 0 0 1px #e04845, 0 0 0 3px rgba(240,98,95,.25)}
+  .cell.boom svg path{stroke:#fff}
+  .cell.boom svg circle{fill:#fff;stroke:#fff}
+
+  .cell.wrongflag{background:linear-gradient(180deg,#fdeaea,#f8dada);box-shadow:inset 0 0 0 1px #f0c8c8}
+  .cell .x{
+    position:absolute;inset:0;display:grid;place-items:center;
+    color:#d13438;font-size:calc(var(--cell) * .74);font-weight:700;
+    text-shadow:0 0 3px #fff;
+  }
+
+  .cell.n1{color:#1976d2}
+  .cell.n2{color:#2e7d32}
+  .cell.n3{color:#d32f2f}
+  .cell.n4{color:#512da8}
+  .cell.n5{color:#8d4a00}
+  .cell.n6{color:#00838f}
+  .cell.n7{color:#37474f}
+  .cell.n8{color:#757575}
+
+  .cell.pop{animation:pop .18s cubic-bezier(.2,.9,.3,1.4)}
+  @keyframes pop{from{transform:scale(.72);opacity:.35}to{transform:scale(1);opacity:1}}
+
+  .cell.flagpop svg{animation:flagpop .3s cubic-bezier(.2,.9,.3,1.5)}
+  @keyframes flagpop{from{transform:scale(.4) rotate(-14deg);opacity:.2}to{transform:scale(1) rotate(0)}}
+
+  .board.win .cell.open{box-shadow:inset 0 0 0 1px #cfe6cf}
+  .board.lose{animation:boardShake .34s ease}
+  @keyframes boardShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+
+  /* ============ 提示条 ============ */
+  .toast{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-46%) scale(.96);
+    background:rgba(255,255,255,.95);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(205,215,230,.9);
+    box-shadow:0 12px 34px rgba(25,45,80,.20);
+    border-radius:12px;
+    padding:16px 20px;
+    display:flex;flex-direction:column;align-items:center;gap:10px;
+    opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;
+    min-width:212px;
+  }
+  .toast.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+  .toast .t-title{font-size:15px;font-weight:650}
+  .toast .t-sub{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .toast button{
+    margin-top:2px;border:0;border-radius:8px;padding:8px 16px;font-family:inherit;
+    font-size:12.5px;font-weight:600;color:#fff;cursor:pointer;
+    background:linear-gradient(180deg,#1a7fd4,var(--accent));
+    box-shadow:0 2px 6px rgba(15,108,189,.35);
+    transition:filter .15s,transform .1s;
+  }
+  .toast button:hover{filter:brightness(1.06)}
+  .toast button:active{transform:scale(.97)}
+
+  .footer{
+    margin-top:11px;font-size:11.5px;color:var(--muted);text-align:center;
+    display:flex;gap:12px;justify-content:center;flex-wrap:wrap;
+  }
+  .footer kbd{
+    font-family:inherit;font-size:11px;padding:1px 5px;border-radius:4px;
+    background:#eceff5;border:1px solid var(--line-strong);color:#4b5563;
+  }
+  .mode-note{color:var(--accent);font-weight:600}
+  .mode-note.warn{color:#b45309}
+  .mode-note:empty{display:none}
+
+  /* ============ 无猜开关 ============ */
+  .switch{display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;position:relative}
+  .switch input{position:absolute;opacity:0;width:0;height:0}
+  .switch .track{
+    width:40px;height:20px;border-radius:10px;background:#c3ccda;position:relative;
+    transition:background .18s;border:1px solid rgba(20,40,70,.08);box-sizing:border-box;
+  }
+  .switch .knob{
+    position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(20,40,70,.3);
+    transition:transform .18s cubic-bezier(.2,.9,.3,1.2);
+  }
+  .switch input:checked + .track{background:var(--accent);border-color:transparent}
+  .switch input:checked + .track .knob{transform:translateX(20px)}
+  .switch .sw-label{font-size:12.5px;color:var(--muted);font-weight:600;transition:color .15s}
+  .switch input:checked ~ .sw-label{color:var(--accent)}
+  .switch:hover .track{filter:brightness(1.04)}
+  .switch input:focus-visible + .track{box-shadow:0 0 0 3px rgba(15,108,189,.2)}
+
+  /* ============ 生成中 ============ */
+  .gen{
+    position:absolute;inset:0;z-index:6;display:none;align-items:center;justify-content:center;gap:10px;
+    background:rgba(246,249,253,.84);
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    border-radius:10px;font-size:12.5px;color:#4b5563;font-weight:500;
+  }
+  .gen.show{display:flex}
+  .spinner{
+    width:15px;height:15px;border-radius:50%;
+    border:2px solid #ccd7e6;border-top-color:var(--accent);
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ============ 自定义弹窗 ============ */
+  .modal{
+    position:fixed;inset:0;background:rgba(20,30,50,.28);
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    display:grid;place-items:center;z-index:50;animation:fade .18s ease both;
+  }
+  .modal[hidden]{display:none}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .modal-card{
+    width:302px;background:var(--surface);border-radius:12px;
+    padding:20px;box-shadow:0 22px 50px rgba(20,40,80,.3);
+    border:1px solid rgba(225,232,242,.9);
+    animation:winIn .26s cubic-bezier(.16,.84,.34,1) both;
+  }
+  .modal-card h3{font-size:15px;font-weight:650;margin-bottom:14px}
+  .field{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+  .field label{font-size:12.5px;color:var(--muted)}
+  .field input{
+    width:96px;font-family:inherit;font-size:13px;color:var(--text);
+    padding:6px 9px;border-radius:7px;border:1px solid var(--line-strong);
+    background:#fbfcfe;outline:none;transition:border-color .15s,box-shadow .15s;
+    font-variant-numeric:tabular-nums;
+  }
+  .field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(15,108,189,.14);background:#fff}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  .modal-actions button{
+    border-radius:7px;padding:7px 15px;font-family:inherit;font-size:12.5px;font-weight:600;
+    cursor:pointer;border:1px solid var(--line-strong);background:#f4f6fa;color:var(--text);
+    transition:background .15s,filter .15s;
+  }
+  .modal-actions button:hover{background:#eaeef5}
+  .modal-actions .primary{
+    background:linear-gradient(180deg,#1a7fd4,var(--accent));color:#fff;border-color:transparent;
+    box-shadow:0 2px 6px rgba(15,108,189,.32);
+  }
+  .modal-actions .primary:hover{filter:brightness(1.06);background:linear-gradient(180deg,#1a7fd4,var(--accent))}
+  .modal-note{font-size:11px;color:var(--text-3);margin-top:4px;min-height:14px}
+
+  /* ============ 排位 / 成就：工具栏 ============ */
+  .tool-btn{
+    display:flex;align-items:center;gap:7px;height:34px;padding:0 9px 0 5px;flex:0 0 auto;
+    border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.85);
+    font-family:inherit;cursor:pointer;transition:background .15s,box-shadow .15s,transform .1s;
+  }
+  .tool-btn:hover{background:#fff;box-shadow:0 2px 8px rgba(30,50,80,.10)}
+  .tool-btn:active{transform:scale(.98)}
+  .tool-btn .tb-txt{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15}
+  .tool-btn .tb-txt b{font-size:11.5px;font-weight:650;color:var(--text);white-space:nowrap}
+  .tool-btn .tb-txt i{font-size:10px;font-style:normal;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tool-btn.ranked-on{border-color:rgba(15,108,189,.45);background:var(--accent-soft);box-shadow:0 0 0 3px rgba(15,108,189,.08)}
+  .tool-btn .ico.camp{background:linear-gradient(150deg,#63b6e8,#1d6fa8);box-shadow:0 2px 6px rgba(29,111,168,.3),inset 0 1px 0 rgba(255,255,255,.45)}
+  .tool-btn .ico{
+    width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;
+    background:linear-gradient(150deg,#f7d477,#a8740c);color:#fff;
+    box-shadow:0 2px 6px rgba(140,95,10,.25),inset 0 1px 0 rgba(255,255,255,.45);
+  }
+  .tool-btn .ico svg{width:15px;height:15px}
+
+  .tb-mid{flex:1;display:flex;align-items:center;justify-content:flex-end;gap:4px;padding-right:8px;min-width:0}
+  .tb-tools{display:flex;align-items:center;gap:4px}
+  .metabar{display:flex;align-items:center;gap:7px;row-gap:6px;flex-wrap:wrap;margin:-2px 0 12px}
+  .meta-season{font-size:10.5px;color:var(--text-3);font-weight:600;letter-spacing:.2px;margin-left:auto;white-space:nowrap}
+
+  /* ============ 段位徽章 ============ */
+  .rk-emblem{
+    --r1:#8a5a30;--r2:#e8b483;
+    width:56px;height:56px;border-radius:17px;display:grid;place-items:center;flex:none;position:relative;
+    background:linear-gradient(150deg,var(--r2),var(--r1) 80%);
+    color:#fff;
+    box-shadow:0 6px 16px rgba(20,40,80,.20),inset 0 1px 0 rgba(255,255,255,.6),inset 0 -8px 14px rgba(0,0,0,.16);
+  }
+  .rk-emblem::after{
+    content:'';position:absolute;inset:3px;border-radius:14px;pointer-events:none;
+    background:linear-gradient(160deg,rgba(255,255,255,.34),rgba(255,255,255,0) 46%);
+  }
+  .rk-emblem svg{width:30px;height:30px;position:relative;z-index:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.28))}
+  .rk-emblem.sm{width:26px;height:26px;border-radius:8px}
+  .rk-emblem.sm svg{width:15px;height:15px}
+  .rk-emblem.sm::after{inset:2px;border-radius:6px}
+  .r-bronze{--r1:#87552c;--r2:#e9b585}
+  .r-silver{--r1:#6d7887;--r2:#e2eaf4}
+  .r-gold{--r1:#a8740c;--r2:#f8d97e}
+  .r-platinum{--r1:#177a7c;--r2:#93e6e2}
+  .r-diamond{--r1:#2a52a8;--r2:#a2c6fc}
+  .r-star{--r1:#6d33ac;--r2:#cfb0f9}
+  .r-king{--r1:#a5271b;--r2:#f9b473}
+
+  /* ============ 面板（排位 / 成就） ============ */
+  .panel{
+    position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:22px 16px;
+    background:rgba(18,28,46,.34);
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+    animation:fade .16s ease both;
+  }
+  .panel[hidden]{display:none}
+  .panel-card{
+    width:min(500px,100%);max-height:min(88vh,780px);overflow:auto;
+    background:var(--surface);border-radius:14px;padding:20px;position:relative;
+    border:1px solid rgba(225,232,242,.9);
+    box-shadow:0 28px 64px rgba(15,30,60,.34);
+    animation:winIn .26s cubic-bezier(.16,.84,.34,1) both;
+    scrollbar-width:thin;
+  }
+  .panel-card::-webkit-scrollbar{width:8px}
+  .panel-card::-webkit-scrollbar-thumb{background:#ccd6e4;border-radius:8px}
+  .panel-x{
+    position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:7px;border:0;
+    background:#f1f4f9;color:#5d6673;font-size:12px;cursor:pointer;display:grid;place-items:center;
+    font-family:inherit;transition:background .15s,color .15s;
+  }
+  .panel-x:hover{background:#e81123;color:#fff}
+
+  .rank-hero{display:flex;gap:14px;align-items:center;margin-bottom:16px;padding-right:24px}
+  .rank-hero .rk-t{font-size:17px;font-weight:700;letter-spacing:.3px}
+  .rank-hero .rk-s{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .rk-prog{margin-top:8px;display:flex;align-items:center;gap:8px}
+  .rk-prog .rk-bar{flex:1}
+  .rk-prog span{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .rk-bar{height:8px;border-radius:999px;background:#e6ebf3;overflow:hidden;box-shadow:inset 0 1px 2px rgba(30,50,80,.09)}
+  .rk-bar > i{
+    display:block;height:100%;width:0;border-radius:999px;
+    background:linear-gradient(90deg,#1a7fd4,#4aa3e8);
+    transition:width .6s cubic-bezier(.2,.9,.3,1);
+  }
+  .rk-bar.gold > i{background:linear-gradient(90deg,#c9911a,#f0c65a)}
+
+  .rank-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:8px;margin-bottom:14px}
+  .rs-item{background:#f6f8fc;border:1px solid var(--line);border-radius:9px;padding:8px 6px;text-align:center}
+  .rs-item b{display:block;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rs-item span{font-size:10.5px;color:var(--muted)}
+  .rank-hist{display:flex;align-items:center;gap:8px;margin-bottom:16px;min-height:18px}
+  .rank-hist .rh-label{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .rh-dots{display:flex;gap:4px;flex:1}
+  .rh-dot{width:16px;height:16px;border-radius:5px;flex:none}
+  .rh-dot.w{background:linear-gradient(180deg,#3f9bea,#0f6cbd)}
+  .rh-dot.l{background:#c3ccda}
+
+  .rank-pick{display:flex;gap:8px;margin-bottom:12px}
+  .pick{
+    flex:1;border:1px solid var(--line-strong);background:#fbfcfe;border-radius:9px;
+    padding:8px 4px;font-family:inherit;cursor:pointer;text-align:center;transition:all .15s;
+  }
+  .pick b{display:block;font-size:12.5px;color:var(--text)}
+  .pick i{font-size:10.5px;font-style:normal;color:var(--text-3)}
+  .pick:hover{background:#f4f7fc}
+  .pick.active{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 3px rgba(15,108,189,.09)}
+  .pick.active b{color:var(--accent)}
+  .pick.active i{color:var(--accent)}
+
+  .btn-primary{
+    width:100%;border:0;border-radius:9px;padding:10px;font-family:inherit;
+    font-size:13px;font-weight:650;color:#fff;cursor:pointer;
+    background:linear-gradient(180deg,#1a7fd4,var(--accent));
+    box-shadow:0 3px 10px rgba(15,108,189,.3);
+    transition:filter .15s,transform .1s;
+  }
+  .btn-primary:hover{filter:brightness(1.06)}
+  .btn-primary:active{transform:scale(.99)}
+  .panel-note{font-size:11px;color:var(--text-3);margin-top:9px;line-height:1.6;text-align:center}
+
+  /* ============ 成就 ============ */
+  .ach-hero{display:flex;gap:14px;align-items:center;margin-bottom:14px;padding-right:24px}
+  .ach-trophy{
+    width:56px;height:56px;border-radius:16px;display:grid;place-items:center;flex:none;
+    background:linear-gradient(150deg,#f8d97e,#a8740c 82%);color:#fff;
+    box-shadow:0 6px 16px rgba(168,116,12,.28),inset 0 1px 0 rgba(255,255,255,.6);
+  }
+  .ach-trophy svg{width:30px;height:30px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}
+  .ach-score{font-size:20px;font-weight:750;letter-spacing:.2px;font-variant-numeric:tabular-nums}
+  .ach-score span{font-size:11px;font-weight:500;color:var(--muted);margin-left:3px}
+  .ach-tabs{display:flex;gap:4px;padding:3px;background:#eceff5;border-radius:9px;margin-bottom:12px}
+  .ach-tabs button{
+    flex:1;border:0;background:transparent;font-family:inherit;font-size:12px;font-weight:600;
+    color:var(--muted);padding:6px 4px;border-radius:7px;cursor:pointer;transition:all .15s;
+  }
+  .ach-tabs button:hover{color:var(--text)}
+  .ach-tabs button.active{background:#fff;color:var(--accent);box-shadow:0 1px 2px rgba(25,45,80,.12)}
+  .ach-list{display:flex;flex-direction:column;gap:8px}
+  .ach-item{
+    display:flex;gap:11px;padding:10px;border-radius:10px;
+    border:1px solid var(--line);background:#fbfcfe;transition:background .15s,border-color .15s;
+  }
+  .ach-item.unlocked{background:linear-gradient(180deg,#fffdf6,#fff9ec);border-color:#f0dcae}
+  .ach-ico{
+    width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:none;
+    background:linear-gradient(150deg,#e9eef5,#cbd5e2);color:var(--text-3);
+  }
+  .ach-ico svg{width:20px;height:20px}
+  .ach-item.unlocked .ach-ico{
+    background:linear-gradient(150deg,var(--a2,#f8d97e),var(--a1,#a8740c));color:#fff;
+    box-shadow:0 3px 9px rgba(120,85,10,.22),inset 0 1px 0 rgba(255,255,255,.5);
+  }
+  .q-copper{--a1:#a4622f;--a2:#e8b183}
+  .q-silver{--a1:#77828f;--a2:#e8eff7}
+  .q-gold{--a1:#a8740c;--a2:#f8d97e}
+  .q-plat{--a1:#3a6fb8;--a2:#aecdF9}
+  .ach-body{flex:1;min-width:0}
+  .ach-name{font-size:12.5px;font-weight:650;display:flex;align-items:center;gap:6px}
+  .ach-name .pts{margin-left:auto;font-size:11px;font-weight:700;color:#8a5d07;font-variant-numeric:tabular-nums}
+  .ach-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5}
+  .ach-prog{height:4px;border-radius:999px;background:#e6ebf3;margin-top:6px;overflow:hidden}
+  .ach-prog i{display:block;height:100%;width:0;border-radius:999px;background:#a6b5c9;transition:width .5s}
+  .ach-item.unlocked .ach-prog i{background:linear-gradient(90deg,#c9911a,#f0c65a)}
+  .ach-meta{font-size:10px;color:var(--text-3);margin-top:4px;display:flex;gap:8px}
+  .ach-item.locked .ach-name{color:#6b7482}
+  .ach-item.locked .ach-ico{opacity:.75}
+  .ach-item.locked .ach-desc{color:var(--text-3)}
+
+  /* ============ 排位结算 ============ */
+  .settle{
+    position:absolute;inset:0;z-index:9;display:grid;place-items:center;padding:12px;
+    border-radius:10px;background:rgba(244,248,253,.76);
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    animation:fade .18s ease both;
+  }
+  .settle[hidden]{display:none}
+  .settle-card{
+    width:252px;background:rgba(255,255,255,.98);border-radius:14px;padding:16px;text-align:center;
+    border:1px solid rgba(205,215,230,.9);
+    box-shadow:0 18px 44px rgba(25,45,80,.24);
+    animation:winIn .32s cubic-bezier(.16,.84,.34,1) both;
+  }
+  .st-head{font-size:12.5px;font-weight:650;color:var(--accent);letter-spacing:.4px}
+  .st-head.lose{color:var(--text-3)}
+  .st-emblem{margin:10px auto 7px;display:flex;justify-content:center}
+  .st-rank{font-size:13px;font-weight:650}
+  .st-gain{font-size:23px;font-weight:800;margin:3px 0 0;font-variant-numeric:tabular-nums;letter-spacing:.5px}
+  .st-gain.up{color:#c9911a;animation:starPop .5s cubic-bezier(.2,1.4,.4,1) both}
+  .st-gain.down{color:#b8763d;animation:starPop .5s cubic-bezier(.2,1.4,.4,1) both}
+  .st-gain.flat{color:var(--muted);animation:starPop .5s cubic-bezier(.2,1.4,.4,1) both}
+  @keyframes starPop{0%{transform:scale(.55);opacity:0}60%{transform:scale(1.14)}100%{transform:scale(1);opacity:1}}
+  .st-bar{height:7px;border-radius:999px;background:#e6ebf3;overflow:hidden;margin:9px 0 6px}
+  .st-bar i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#c9911a,#f0c65a);transition:width .7s cubic-bezier(.2,.9,.3,1)}
+  .st-note{font-size:10.5px;color:var(--muted);min-height:14px;line-height:1.55}
+  .st-actions{display:flex;gap:7px;margin-top:12px}
+  .st-actions button{
+    flex:1;border-radius:8px;padding:8px 4px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;
+    border:1px solid var(--line-strong);background:#f4f6fa;color:var(--text);transition:background .15s;
+  }
+  .st-actions button:hover{background:#eaeef5}
+  .st-actions .primary{border-color:transparent;color:#fff;background:linear-gradient(180deg,#1a7fd4,var(--accent));box-shadow:0 2px 8px rgba(15,108,189,.3)}
+  .st-actions .primary:hover{background:linear-gradient(180deg,#1a7fd4,var(--accent));filter:brightness(1.06)}
+
+  /* ============ 成就解锁通知 ============ */
+  .ach-toasts{position:fixed;top:16px;right:16px;z-index:90;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+  .ach-toast{
+    display:flex;align-items:center;gap:10px;width:264px;padding:10px 12px;border-radius:12px;
+    background:linear-gradient(180deg,rgba(30,36,46,.96),rgba(18,23,31,.96));color:#fff;
+    border:1px solid rgba(255,255,255,.12);
+    box-shadow:0 12px 30px rgba(8,16,30,.36);
+    transform:translateX(calc(100% + 26px));opacity:0;
+    transition:transform .42s cubic-bezier(.16,.84,.34,1),opacity .3s;
+  }
+  .ach-toast.in{transform:translateX(0);opacity:1}
+  .ach-toast .at-ico{
+    width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none;
+    background:linear-gradient(150deg,var(--a2,#f8d97e),var(--a1,#a8740c));color:#fff;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.4);
+  }
+  .ach-toast .at-ico svg{width:18px;height:18px}
+  .ach-toast .at-body{min-width:0;flex:1}
+  .ach-toast .at-kicker{font-size:9px;letter-spacing:1.3px;text-transform:uppercase;color:#f0c65a;font-weight:700}
+  .ach-toast .at-name{font-size:12.5px;font-weight:650;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ach-toast .at-pts{font-size:11px;font-weight:700;color:#f0c65a;font-variant-numeric:tabular-nums}
+
+  /* ============ 图标按钮（音效 / 主题 / 提示） ============ */
+  .icon-btn{
+    width:28px;height:28px;border-radius:7px;border:1px solid transparent;
+    background:transparent;color:var(--muted);cursor:pointer;display:grid;place-items:center;
+    padding:0;font-family:inherit;transition:background .15s,color .15s,transform .08s;
+  }
+  .icon-btn:hover{background:var(--accent-soft);color:var(--accent);border-color:rgba(15,108,189,.3)}
+  .icon-btn:active{transform:scale(.94)}
+  .icon-btn svg{width:15px;height:15px;display:block}
+  .icon-btn.off{opacity:.5}
+  .icon-btn:disabled{opacity:.38;cursor:not-allowed}
+  .icon-btn:disabled:hover{background:var(--surface);color:var(--muted);border-color:var(--line-strong)}
+
+  /* 键盘光标 */
+  .cell.cursor{outline:2px solid var(--accent);outline-offset:-2px;z-index:2}
+  .cell.cursor::after{
+    content:'';position:absolute;inset:0;border-radius:5px;pointer-events:none;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.55);
+  }
+  /* toast 双按钮 */
+  .toast .toast-actions{display:flex;gap:7px;margin-top:2px;flex-wrap:nowrap}
+  .toast .toast-actions button{margin-top:0;white-space:nowrap}
+  .toast button.ghost{
+    background:transparent;color:var(--accent);box-shadow:none;
+    border:1px solid var(--line-strong);
+  }
+  .toast button.ghost:hover{background:var(--accent-soft)}
+
+  /* 提示高亮 */
+  .cell.hintmark{animation:hintPulse 1.05s ease-in-out 2}
+  @keyframes hintPulse{
+    0%,100%{box-shadow:inset 0 0 0 2px rgba(15,108,189,0), inset 0 1px 0 rgba(255,255,255,.9)}
+    45%{box-shadow:inset 0 0 0 3px var(--accent), 0 0 0 4px rgba(15,108,189,.18), inset 0 1px 0 rgba(255,255,255,.9)}
+  }
+  .cell.hint-sure{animation:hintSure 1.05s ease-in-out 2}
+  @keyframes hintSure{
+    0%,100%{box-shadow:inset 0 0 0 2px rgba(209,52,56,0)}
+    45%{box-shadow:inset 0 0 0 3px #d13438, 0 0 0 4px rgba(209,52,56,.18)}
+  }
+
+  /* ============ 每日挑战 ============ */
+  .daily-hero{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    margin:10px 0 12px;padding-right:24px;
+  }
+  .dh-day{font-size:15px;font-weight:700;letter-spacing:.3px}
+  .dh-day i{display:block;font-style:normal;font-size:11px;color:var(--muted);font-weight:500;margin-top:3px}
+  .dh-streak{
+    display:flex;align-items:baseline;gap:5px;padding:6px 11px;border-radius:10px;
+    background:linear-gradient(150deg,#fff3d8,#ffe2ab);border:1px solid #f0d69b;flex:none;
+  }
+  .dh-streak b{font-size:17px;font-weight:800;color:#8a5a05;font-variant-numeric:tabular-nums;line-height:1}
+  .dh-streak span{font-size:10.5px;color:#8a5a05;font-weight:600}
+  .daily-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:2px 0 14px}
+  .dc-cell{
+    height:32px;border-radius:7px;display:grid;place-items:center;
+    font-size:11px;font-weight:650;color:var(--text-3);
+    background:#f2f5fa;border:1px solid #e6ebf3;
+  }
+  .dc-week{height:16px;display:grid;place-items:center;font-size:9.5px;font-weight:700;color:var(--muted);letter-spacing:.5px}
+  #dailyPanel .panel-card{width:min(432px,100%)}
+  .dc-cell.done{background:linear-gradient(160deg,#69bd97,#3a9871);border-color:#348c67;color:#fff}
+  .dc-cell.fail{background:#fdeaea;border-color:#f6d4d4;color:#c26a66}
+  .dc-cell.today{box-shadow:0 0 0 2px var(--accent);border-color:transparent;color:var(--text);font-weight:800}
+  .dc-cell.today.done,.dc-cell.today.fail{color:#fff;box-shadow:0 0 0 2px var(--accent)}
+  .dc-cell.off{background:transparent;border-color:transparent}
+  .daily-note{font-size:11px;color:var(--text-3);text-align:center;margin-top:9px;line-height:1.6}
+
+  /* 结算卡：性能行 */
+  .st-meta{display:flex;justify-content:center;gap:10px;font-size:10.5px;color:var(--muted);margin-top:5px}
+  .st-meta b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
+  .st-share{
+    margin-top:8px;width:100%;border:1px dashed var(--line-strong);background:transparent;color:var(--muted);
+    border-radius:8px;padding:6px;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;
+    transition:all .15s;
+  }
+  .st-share:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+
+  /* ============ 战役模式 ============ */
+  #campPanel .panel-card{width:min(486px,100%);max-height:min(94vh,880px)}
+  .camp-top{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-right:24px}
+  .camp-top .ct-t{font-size:17px;font-weight:700;letter-spacing:.3px}
+  .camp-top .ct-s{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .camp-badge{
+    width:52px;height:52px;border-radius:15px;flex:none;display:grid;place-items:center;
+    background:linear-gradient(150deg,#8fd0f0,#1b6fa8 84%);color:#fff;
+    box-shadow:0 6px 16px rgba(27,111,168,.3),inset 0 1px 0 rgba(255,255,255,.55);
+  }
+  .camp-badge svg{width:26px;height:26px}
+  .camp-chapters{display:flex;flex-direction:column;gap:11px;margin-top:2px}
+  .camp-head{display:flex;align-items:baseline;gap:7px;margin-bottom:6px}
+  .camp-head b{font-size:12.5px;font-weight:700;letter-spacing:.3px}
+  .camp-head span{font-size:10.5px;color:var(--muted)}
+  .camp-head i{margin-left:auto;font-style:normal;font-size:10.5px;color:var(--text-3);font-variant-numeric:tabular-nums}
+  .camp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .lv-card{
+    position:relative;display:flex;flex-direction:column;gap:1px;
+    border:1px solid var(--line-strong);background:#fbfcfe;border-radius:10px;
+    padding:6px 8px 5px;text-align:left;font-family:inherit;cursor:pointer;
+    transition:all .15s;overflow:hidden;min-width:0;
+  }
+  .lv-no{font-size:9.5px;font-weight:800;color:var(--text-3);letter-spacing:.6px;font-variant-numeric:tabular-nums}
+  .lv-name{font-size:11.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lv-spec{font-size:9.5px;color:var(--text-3);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lv-stars{font-size:10px;letter-spacing:1.2px;color:#b6c0cd;margin-top:2px}
+  .lv-stars s{text-decoration:none;color:#f0b429}
+  .lv-tag{
+    position:absolute;top:7px;right:7px;font-size:8.5px;font-weight:800;letter-spacing:.4px;
+    padding:1px 4px;border-radius:4px;background:#eaf1fb;color:#2f6fb5;
+  }
+  .lv-tag.hard{background:#fdeee6;color:#b4531a}
+  .lv-card:hover{border-color:var(--accent);background:#f4f8fe;transform:translateY(-1px);box-shadow:0 3px 9px rgba(20,60,110,.09)}
+  .lv-card.done{border-color:#bfe0cb;background:linear-gradient(170deg,#f7fdf9,#eefaf2)}
+  .lv-card.done .lv-no{color:#5aa87c}
+  .lv-card.cur{border-color:var(--accent);box-shadow:0 0 0 3px rgba(15,108,189,.1)}
+  .lv-card.locked{opacity:.72;cursor:not-allowed;background:#f4f6fa}
+  .lv-card.locked:hover{transform:none;border-color:var(--line-strong);box-shadow:none}
+  .lv-lock{position:absolute;top:7px;right:6px;color:#9aa5b4}
+  .lv-lock svg{width:12px;height:12px;stroke:currentColor;stroke-width:2.1;fill:none;display:block}
+  .lv-card.locked .lv-name{color:var(--text-3)}
+
+  /* 关卡结算 */
+  .lvl-settle{
+    position:absolute;inset:0;display:grid;place-items:center;z-index:8;
+    background:rgba(238,243,250,.72);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    border-radius:10px;animation:fade .18s ease both;
+  }
+  .lvl-settle[hidden]{display:none}
+  .ls-card{
+    width:min(292px,92%);background:#fff;border-radius:14px;padding:18px 18px 14px;text-align:center;
+    border:1px solid rgba(222,230,242,.95);box-shadow:0 20px 48px rgba(15,30,60,.3);
+    animation:winIn .3s cubic-bezier(.16,.84,.34,1) both;
+  }
+  .ls-kicker{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:var(--text-3);text-transform:uppercase}
+  .ls-title{font-size:17px;font-weight:750;margin-top:4px;letter-spacing:.3px}
+  .ls-stars{display:flex;justify-content:center;gap:7px;margin:12px 0 8px}
+  .ls-star{font-size:27px;line-height:1;color:#e3e8f0;transform:scale(.82);transition:none}
+  .ls-star.on{color:#f0b429;animation:starPop .44s cubic-bezier(.2,.9,.3,1.55) both;text-shadow:0 3px 10px rgba(240,180,41,.4)}
+  @keyframes starPop{0%{transform:scale(.2) rotate(-30deg);opacity:0}70%{transform:scale(1.18) rotate(4deg)}100%{transform:scale(1) rotate(0);opacity:1}}
+  .ls-sub{font-size:11.5px;color:var(--muted);line-height:1.65}
+  .ls-sub b{color:var(--text);font-variant-numeric:tabular-nums}
+  .ls-actions{display:flex;gap:7px;margin-top:13px}
+  .ls-actions button{
+    flex:1;border:1px solid var(--line-strong);background:#fbfcfe;color:var(--text);
+    border-radius:8px;padding:8px;font-family:inherit;font-size:12px;font-weight:650;cursor:pointer;
+    transition:all .15s;
+  }
+  .ls-actions button.primary{
+    border:0;background:linear-gradient(180deg,#1a7fd4,var(--accent));color:#fff;
+    box-shadow:0 3px 9px rgba(15,108,189,.28);
+  }
+  .ls-actions button:hover{filter:brightness(1.04)}
+  .ls-actions button.ghost{flex:0 0 64px;color:var(--muted)}
+
+  /* ============ 数据统计 ============ */
+  #statsPanel .panel-card{width:min(496px,100%)}
+  .stat-hero{display:flex;align-items:center;gap:12px;margin-bottom:15px;padding-right:24px}
+  .stat-hero .sh-ico{
+    width:46px;height:46px;border-radius:13px;flex:none;display:grid;place-items:center;
+    background:linear-gradient(150deg,#9ad7b4,#2f8f61 84%);color:#fff;
+    box-shadow:0 5px 14px rgba(47,143,97,.28),inset 0 1px 0 rgba(255,255,255,.5);
+  }
+  .stat-hero .sh-ico svg{width:23px;height:23px}
+  .sh-t{font-size:16px;font-weight:700;letter-spacing:.3px}
+  .sh-s{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .stat-big{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:14px}
+  .sb-item{background:linear-gradient(170deg,#f8fafd,#f1f5fb);border:1px solid var(--line);border-radius:10px;padding:9px 5px;text-align:center}
+  .sb-item b{display:block;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sb-item span{font-size:10px;color:var(--muted)}
+  .stat-sec{font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:.4px;margin:14px 0 7px}
+  .chart-card{background:#fbfcfe;border:1px solid var(--line);border-radius:10px;padding:8px 8px 4px}
+  .chart-card svg{display:block;width:100%;height:auto}
+  .chart-card .ch-empty{fill:var(--text-3)}
+  .chart-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:9.5px;color:var(--muted);padding:0 2px 6px}
+  .chart-legend i{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:3px}
+  .wr-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .wr-row .wr-l{width:52px;font-size:11px;color:var(--text);font-weight:600;flex:none}
+  .wr-row .wr-bar{flex:1;height:9px;border-radius:999px;background:#e9eef6;overflow:hidden;display:flex}
+  .wr-row .wr-bar > i{display:block;height:100%}
+  .wr-row .wr-bar > i.w{background:linear-gradient(90deg,#3f9bea,#0f6cbd)}
+  .wr-row .wr-bar > i.l{background:#dbe2ec}
+  .wr-row .wr-v{width:62px;text-align:right;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+  .best-table{display:grid;grid-template-columns:1fr auto auto;gap:5px 10px;font-size:11.5px;align-items:center}
+  .best-table .bt-h{font-size:10px;color:var(--text-3);font-weight:700;letter-spacing:.3px}
+  .best-table .bt-l{color:var(--text)}
+  .best-table .bt-v{font-variant-numeric:tabular-nums;color:#4b5563;text-align:right;min-width:52px}
+  .best-table .bt-v.none{color:var(--text-3)}
+  .set-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px;background:#fbfcfe}
+  .set-row .sr-t{font-size:11.5px;font-weight:600}
+  .set-row .sr-d{font-size:10px;color:var(--muted);margin-top:2px}
+  .seg-mini{display:flex;gap:0;border:1px solid var(--line-strong);border-radius:7px;overflow:hidden;flex:none}
+  .seg-mini button{
+    border:0;background:#fff;color:var(--muted);font-family:inherit;font-size:10.5px;font-weight:650;
+    padding:4px 9px;cursor:pointer;transition:all .14s;
+  }
+  .seg-mini button + button{border-left:1px solid var(--line)}
+  .seg-mini button.active{background:var(--accent);color:#fff}
+
+  /* 色盲友好数字配色 */
+  :root[data-numstyle="cb"] .cell.n1{color:#0072b2}
+  :root[data-numstyle="cb"] .cell.n2{color:#009e73}
+  :root[data-numstyle="cb"] .cell.n3{color:#d55e00}
+  :root[data-numstyle="cb"] .cell.n4{color:#a3489b}
+  :root[data-numstyle="cb"] .cell.n5{color:#8b5a2b}
+  :root[data-numstyle="cb"] .cell.n6{color:#0e7c8c}
+  :root[data-numstyle="cb"] .cell.n7{color:#1b1f24}
+  :root[data-numstyle="cb"] .cell.n8{color:#6b7480}
+  :root[data-numstyle="cb"] .cell{font-weight:800}
+  :root[data-numstyle="dark"] .cell.n7{color:#0d1117}
+  :root[data-numstyle="dark"] .cell.n8{color:#3d4653}
+
+  /* ============ 深色主题 ============ */
+  :root[data-theme="dark"]{
+    --accent:#4f9fe8;
+    --accent-strong:#7cbcf5;
+    --accent-soft:#17324a;
+    --win-bg:#20242b;
+    --surface:#272c34;
+    --text:#e9edf3;
+    --muted:#98a2b0;
+    --text-3:#9aa4b3;
+    --line:#343c47;
+    --line-strong:#3f4955;
+    --shadow-win:0 26px 64px rgba(0,0,0,.62), 0 4px 16px rgba(0,0,0,.44);
+  }
+  :root[data-theme="dark"] body{
+    background:
+      radial-gradient(1100px 700px at 12% 6%, #1c2a3b 0%, rgba(28,42,59,0) 62%),
+      radial-gradient(900px 640px at 88% 96%, #1a2334 0%, rgba(26,35,52,0) 60%),
+      linear-gradient(160deg,#151a21 0%, #12161c 46%, #0e1217 100%);
+  }
+  :root[data-theme="dark"] .window{background:var(--win-bg);border-color:rgba(255,255,255,.07);outline-color:rgba(255,255,255,.05)}
+  :root[data-theme="dark"] .titlebar{background:linear-gradient(180deg,#282e37,#21262d);border-bottom-color:#2f3742}
+  :root[data-theme="dark"] .seg{background:#282e37;border-color:#353e49}
+  :root[data-theme="dark"] .seg button:hover{background:rgba(255,255,255,.07)}
+  :root[data-theme="dark"] .seg button.active{background:#3a4351;color:#8ec6f7;box-shadow:0 1px 2px rgba(0,0,0,.45),0 0 0 1px #4a5665}
+  :root[data-theme="dark"] .best{background:rgba(255,255,255,.05)}
+  :root[data-theme="dark"] .tool-btn{background:rgba(255,255,255,.06);border-color:#3a434f}
+  :root[data-theme="dark"] .tool-btn:hover{background:rgba(255,255,255,.12);box-shadow:0 2px 8px rgba(0,0,0,.35)}
+  :root[data-theme="dark"] .tool-btn .ico{background:linear-gradient(150deg,#c9a24a,#7d5508);box-shadow:0 2px 6px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.28)}
+  :root[data-theme="dark"] .tool-btn .ico.camp{background:linear-gradient(150deg,#4f9fe8,#1b4f74)}
+  :root[data-theme="dark"] .tool-btn.ranked-on{background:#17324a;border-color:#2f5d84}
+  :root[data-theme="dark"] .chip{background:#272d35;border-color:#353e49;box-shadow:0 1px 2px rgba(0,0,0,.35)}
+  :root[data-theme="dark"] .chip .num{color:#e9edf3}
+  :root[data-theme="dark"] .face{
+    background:linear-gradient(180deg,#3a4351,#2b323c);border-color:#454f5d;
+    box-shadow:0 1px 3px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.09);
+  }
+  :root[data-theme="dark"] .face:hover{background:linear-gradient(180deg,#45505f,#333c48)}
+  :root[data-theme="dark"] .board-wrap{
+    background:#181d24;border-color:#2c333d;
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.55);
+  }
+  :root[data-theme="dark"] .cell{
+    background:linear-gradient(180deg,#3a4350,#2c343f);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.1), inset 0 -1px 0 rgba(0,0,0,.34), 0 1px 2px rgba(0,0,0,.32);
+  }
+  :root[data-theme="dark"] .cell:hover{background:linear-gradient(180deg,#46515f,#353e4a)}
+  :root[data-theme="dark"] .cell.open{background:#171d24;box-shadow:inset 0 0 0 1px #2b333d}
+  :root[data-theme="dark"] .cell.open:hover{background:#1a212a}
+  :root[data-theme="dark"] .board-wrap{background:#10151b}
+  :root[data-theme="dark"] .cell.mine{background:#3b2426;box-shadow:inset 0 0 0 1px #553130}
+  :root[data-theme="dark"] .cell.mine.dim{background:#262b31;opacity:.68}
+  :root[data-theme="dark"] .cell.mine svg{filter:invert(.84) hue-rotate(180deg)}
+  :root[data-theme="dark"] .cell.boom{background:#c84743 !important;box-shadow:inset 0 0 0 1px #a83a37, 0 0 0 3px rgba(200,71,67,.28)}
+  :root[data-theme="dark"] .cell.boom svg{filter:none}
+  :root[data-theme="dark"] .cell.wrongflag{background:linear-gradient(180deg,#3b2426,#33201f);box-shadow:inset 0 0 0 1px #553130}
+  :root[data-theme="dark"] .cell .x{color:#ff8a83;text-shadow:0 0 3px #1a0f0f}
+  :root[data-theme="dark"] .cell.flag svg path[stroke="#5b6472"]{stroke:#b6c2d1}
+  :root[data-theme="dark"] .cell.flag svg rect[fill="#5b6472"]{fill:#b6c2d1}
+  :root[data-theme="dark"] .cell.n1{color:#5fa9f2}
+  :root[data-theme="dark"] .cell.n2{color:#5fc46b}
+  :root[data-theme="dark"] .cell.n3{color:#f0706a}
+  :root[data-theme="dark"] .cell.n4{color:#a98cf0}
+  :root[data-theme="dark"] .cell.n5{color:#d99b5c}
+  :root[data-theme="dark"] .cell.n6{color:#45c2c7}
+  :root[data-theme="dark"] .cell.n7{color:#c6cfdb}
+  :root[data-theme="dark"] .cell.n8{color:#8d98a7}
+  /* 暗色主题下色盲配色会被上面的暗色调色覆盖，这里补一套等价的暗色版（对比度均 > 6:1） */
+  :root[data-theme="dark"][data-numstyle="cb"] .cell.n1{color:#4fa3e0}
+  :root[data-theme="dark"][data-numstyle="cb"] .cell.n2{color:#57c98f}
+  :root[data-theme="dark"][data-numstyle="cb"] .cell.n3{color:#f5894f}
+  :root[data-theme="dark"][data-numstyle="cb"] .cell.n4{color:#d193d4}
+  :root[data-theme="dark"][data-numstyle="cb"] .cell.n5{color:#c9a06a}
+  :root[data-theme="dark"][data-numstyle="cb"] .cell.n6{color:#5fc4d8}
+  :root[data-theme="dark"][data-numstyle="cb"] .cell.n7{color:#e8edf4}
+  :root[data-theme="dark"][data-numstyle="cb"] .cell.n8{color:#aab5c4}
+  :root[data-theme="dark"] .board.win .cell.open{box-shadow:inset 0 0 0 1px #3c5a45}
+  :root[data-theme="dark"] .toast{background:rgba(39,44,52,.96);border-color:#3c4553;box-shadow:0 12px 34px rgba(0,0,0,.5)}
+  :root[data-theme="dark"] .footer{color:#8b95a4}
+  :root[data-theme="dark"] .footer kbd{background:#2c333d;border-color:#3f4955;color:#b9c4d2}
+  :root[data-theme="dark"] .gen{background:rgba(24,29,36,.86);color:#a8b3c1}
+  :root[data-theme="dark"] .spinner{border-color:#3d4753;border-top-color:var(--accent)}
+  :root[data-theme="dark"] .modal{background:rgba(6,10,16,.62)}
+  :root[data-theme="dark"] .modal-card{border-color:#3a4360;box-shadow:0 22px 50px rgba(0,0,0,.6)}
+  :root[data-theme="dark"] .field input{background:#1e242b;border-color:#3a4350;color:var(--text)}
+  :root[data-theme="dark"] .panel{background:rgba(6,10,16,.58)}
+  :root[data-theme="dark"] .panel-card{border-color:#39434f;box-shadow:0 28px 64px rgba(0,0,0,.6)}
+  :root[data-theme="dark"] .panel-card::-webkit-scrollbar-thumb{background:#414b58}
+  :root[data-theme="dark"] .panel-x{background:#2e353f;color:#a8b3c1}
+  :root[data-theme="dark"] .rs-item{background:#2b323b}
+  :root[data-theme="dark"] .rk-bar{background:#333b46;box-shadow:inset 0 1px 2px rgba(0,0,0,.4)}
+  :root[data-theme="dark"] .ach-prog{background:#333b46}
+  :root[data-theme="dark"] .st-bar{background:#333b46}
+  :root[data-theme="dark"] .pick{background:#2b323b}
+  :root[data-theme="dark"] .pick:hover{background:#343d49}
+  :root[data-theme="dark"] .ach-tabs{background:#282e37}
+  :root[data-theme="dark"] .ach-tabs button.active{background:#3a4351;color:#8ec6f7}
+  :root[data-theme="dark"] .ach-item{background:#28303a}
+  :root[data-theme="dark"] .ach-item.unlocked{background:linear-gradient(180deg,#322c1d,#2a2418);border-color:#4e4020}
+  :root[data-theme="dark"] .ach-ico{background:linear-gradient(150deg,#3a4351,#2c333d);color:#8b95a4}
+  :root[data-theme="dark"] .ach-item.locked .ach-name{color:#98a3b1}
+  :root[data-theme="dark"] .ach-item.locked .ach-desc{color:var(--text-3)}
+  :root[data-theme="dark"] .ach-name .pts{color:#e0a94a}
+  :root[data-theme="dark"] .rh-dot.l{background:#4a5563}
+  :root[data-theme="dark"] .settle{background:rgba(20,25,32,.8)}
+  :root[data-theme="dark"] .settle-card{background:rgba(40,45,53,.98);border-color:#3c4553;box-shadow:0 18px 44px rgba(0,0,0,.55)}
+  :root[data-theme="dark"] .st-actions button{background:#333b46;border-color:#414b58}
+  :root[data-theme="dark"] .st-actions button:hover{background:#3d4654}
+  :root[data-theme="dark"] .dh-streak{background:linear-gradient(150deg,#3a3020,#332a1b);border-color:#4d3f20}
+  :root[data-theme="dark"] .dh-streak b,:root[data-theme="dark"] .dh-streak span{color:#f0c65a}
+  :root[data-theme="dark"] .dc-cell{background:#2b323b;border-color:#353e49;color:var(--text-3)}
+  :root[data-theme="dark"] .dc-cell.done{background:linear-gradient(160deg,#3f8f6e,#2f7458);border-color:#37906d;color:#eaf7f1}
+  :root[data-theme="dark"] .dc-cell.fail{background:#3b2427;border-color:#4d2f31;color:#e08b86}
+  :root[data-theme="dark"] .daily-note{color:var(--text-3)}
+  :root[data-theme="dark"] .ach-toast{background:linear-gradient(180deg,rgba(46,53,63,.97),rgba(28,33,40,.97))}
+  :root[data-theme="dark"] .lv-card{background:#2b323b;border-color:#3a434f}
+  :root[data-theme="dark"] .lv-stars{color:#5e6876}
+  :root[data-theme="dark"] .lv-card:hover{background:#333c47;border-color:#4f9fe8}
+  :root[data-theme="dark"] .lv-card.done{background:linear-gradient(170deg,#25342c,#203028);border-color:#3a5a49}
+  :root[data-theme="dark"] .lv-card.done .lv-no{color:#69bf95}
+  :root[data-theme="dark"] .lv-card.locked{background:#262d36}
+  :root[data-theme="dark"] .lv-lock{color:#6f7a89}
+  :root[data-theme="dark"] .lv-card.locked .lv-name{color:var(--text-3)}
+  :root[data-theme="dark"] .lv-tag{background:#1e3a55;color:#8cc6f5}
+  :root[data-theme="dark"] .lv-tag.hard{background:#3d2a1d;color:#e8a76b}
+  :root[data-theme="dark"] .lvl-settle{background:rgba(18,23,29,.74)}
+  :root[data-theme="dark"] .ls-card{background:#282f39;border-color:#3a434f}
+  :root[data-theme="dark"] .ls-star{color:#3d4655}
+  :root[data-theme="dark"] .ls-star.on{color:#f0b429}
+  :root[data-theme="dark"] .ls-actions button{background:#333b46;border-color:#414b58;color:#e6edf5}
+  :root[data-theme="dark"] .ls-actions button.primary{color:#fff;border-color:transparent}
+  :root[data-theme="dark"] .sb-item{background:linear-gradient(170deg,#2b323b,#262d36);border-color:#3a434f}
+  :root[data-theme="dark"] .chart-card{background:#262d36;border-color:#3a434f}
+  :root[data-theme="dark"] .wr-row .wr-bar{background:#333b46}
+  :root[data-theme="dark"] .wr-row .wr-bar > i.l{background:#414b58}
+  :root[data-theme="dark"] .best-table .bt-v{color:#b8c3d1}
+  :root[data-theme="dark"] .set-row{background:#2b323b;border-color:#3a434f}
+  :root[data-theme="dark"] .seg-mini{border-color:#414b58}
+  :root[data-theme="dark"] .seg-mini button{background:#2b323b;color:#98a3b1}
+  :root[data-theme="dark"] .seg-mini button.active{background:var(--accent);color:#0f1620}
+  :root[data-theme="dark"] .stat-sec{color:var(--text-3)}
+
+  @media (max-width:520px){
+    body{padding:12px 8px}
+    .content{padding:10px}
+    .seg button{padding:6px 9px;font-size:12px}
+    .best{display:none}
+    .tool-btn{padding:0 5px}
+    .tool-btn .tb-txt{display:none}
+    .panel{padding:12px 8px}
+    .panel-card{padding:16px}
+    .rank-hero .rk-t{font-size:15px}
+    .ach-toasts{top:10px;right:10px;left:10px}
+    .ach-toast{width:auto}
+  }
+  @media (max-width:400px){
+    /* 320px 级别的小屏：标题栏三组按钮必须都塞得下 */
+    .wbtn{width:36px}
+    .tb-left{gap:7px;font-size:12px}
+    .tb-tools{gap:2px}
+    .icon-btn{width:24px;height:24px}
+    .icon-btn svg{width:13px;height:13px}
+    .chip{min-width:82px;padding:6px 9px}
+    .chip .num{font-size:15px}
+    .face{width:42px;height:42px;font-size:21px}
+  }
+</style>
+</head>
+<body>
+
+<div class="window" id="win">
+  <div class="titlebar" id="titlebar">
+    <div class="tb-left">
+      <span class="app-icon">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" fill="#fff"/><g stroke="#fff" stroke-width="1.9" stroke-linecap="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></g></svg>
+      </span>
+      <span>扫雷</span>
+    </div>
+    <div class="tb-mid">
+      <div class="tb-tools">
+        <button class="icon-btn" id="hintBtn" title="提示：高亮一个可以确定的格子 (H)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 17.6h4.8M10.4 20.4h3.2"/><path d="M12 3.2a6 6 0 0 1 3.7 10.7c-.6.5-1 1.2-1 2h-5.4c0-.8-.4-1.5-1-2A6 6 0 0 1 12 3.2z"/></svg>
+        </button>
+        <button class="icon-btn" id="soundBtn" title="音效开关 (S)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 9.4h3L12 5.4v13.2l-4.8-4H4.2z"/><path d="M15.2 9.2a4 4 0 0 1 0 5.6M17.9 6.6a7.6 7.6 0 0 1 0 10.8"/></svg>
+        </button>
+        <button class="icon-btn" id="themeBtn" title="切换深色 / 浅色 (T)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4.2"/>
+            <path d="M12 2.6v2.4M12 19v2.4M2.6 12h2.4M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"/>
+          </svg>
+        </button>
+        <button class="icon-btn" id="statsBtn" title="数据统计 (I)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 20V4M4 20h16"/><path d="M8.4 16.6V11M12.4 16.6V7.4M16.4 16.6v-3.4"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="tb-right">
+      <button class="wbtn" id="winMin" title="最小化">
+        <svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg>
+      </button>
+      <button class="wbtn" id="winMax" title="最大化">
+        <svg viewBox="0 0 10 10"><rect x="1.2" y="1.2" width="7.6" height="7.6" rx="1.2"/></svg>
+      </button>
+      <button class="wbtn close" id="winClose" title="关闭">
+        <svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="toolbar">
+      <div class="seg" id="seg">
+        <button data-level="beginner">初级</button>
+        <button data-level="intermediate">中级</button>
+        <button data-level="expert">高级</button>
+        <button data-level="custom">自定义</button>
+      </div>
+      <label class="switch" title="开启后每局都保证能靠纯逻辑推导通关（N 键切换）">
+        <input type="checkbox" id="ngToggle">
+        <span class="track"><span class="knob"></span></span>
+        <span class="sw-label">无猜</span>
+      </label>
+      <div class="spacer"></div>
+      <div class="best" id="bestWrap">
+        <svg viewBox="0 0 24 24"><path d="M6 3h12v2h3v3c0 3-2.4 5.2-5.2 5.6A6 6 0 0 1 13 16.9V19h3v2H8v-2h3v-2.1a6 6 0 0 1-2.8-3.3C5.4 13.2 3 11 3 8V5h3V3zm0 4H5v1c0 1.7 1.1 3.1 2.5 3.5A6 6 0 0 1 6 8V7zm12 0v1c0 1.4-.4 2.6-1.5 3.5C17.9 11.1 19 9.7 19 8V7h-1z"/></svg>
+        最佳 <b id="bestVal">--:--</b>
+      </div>
+    </div>
+
+    <div class="metabar">
+      <button class="tool-btn" id="dailyBtn" title="每日挑战 (D)">
+        <span class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="4.8" width="17.6" height="16" rx="2.6"/><path d="M3.2 9.6h17.6M8.2 3.2v3.4M15.8 3.2v3.4"/><path d="M7.8 13.4h2.3M13.9 13.4h2.3M7.8 17h2.3"/></svg>
+        </span>
+        <span class="tb-txt"><b>每日</b><i id="dailyMini">未挑战</i></span>
+      </button>
+      <button class="tool-btn" id="rankBtn" title="排位赛 (P)">
+        <span class="rk-emblem sm r-bronze" id="rankMini"></span>
+        <span class="tb-txt"><b id="rankName">倔强青铜 Ⅲ</b><i id="rankStars">0 ★</i></span>
+      </button>
+      <button class="tool-btn" id="achBtn" title="成就 (A)">
+        <span class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v4.2A5 5 0 0 1 7 8.2z"/><path d="M7 5H4.4v1.6A3.4 3.4 0 0 0 8 10M17 5h2.6v1.6A3.4 3.4 0 0 1 16 10"/><path d="M12 13.2V16M8.6 20h6.8M9.6 16h4.8l.8 4H8.8z"/></svg>
+        </span>
+        <span class="tb-txt"><b>成就</b><i id="achMini">0 / 31</i></span>
+      </button>
+      <button class="tool-btn" id="campBtn" title="战役关卡 (C)">
+        <span class="ico camp">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 6.4 12 3.2l7.4 3.2-7.4 3.2z"/><path d="M4.6 12 12 8.8l7.4 3.2-7.4 3.2z"/><path d="M4.6 17.6 12 14.4l7.4 3.2-7.4 3.2z"/></svg>
+        </span>
+        <span class="tb-txt"><b>战役</b><i id="campMini">0 / 30 ★</i></span>
+      </button>
+    </div>
+
+    <div class="hud">
+      <div class="chip" id="mineChip">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.4" fill="#3d4653"/><g stroke="#3d4653" stroke-width="1.7" stroke-linecap="round"><path d="M12 3.4v3.4M12 17.2v3.4M3.4 12h3.4M17.2 12h3.4M5.9 5.9l2.4 2.4M15.7 15.7l2.4 2.4M18.1 5.9l-2.4 2.4M8.3 15.7l-2.4 2.4"/></g><circle cx="10.4" cy="10.4" r="1.1" fill="#fff" opacity=".85"/></svg>
+        <span class="num" id="mineCount">010</span>
+      </div>
+      <button class="face" id="reset" title="重新开始 (R)">🙂</button>
+      <div class="chip" style="justify-content:flex-end">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3d4653" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.2 2"/></svg>
+        <span class="num" id="timer">000</span>
+      </div>
+    </div>
+
+    <div class="board-wrap">
+      <div class="board" id="board" role="grid" aria-label="扫雷棋盘"></div>
+      <div class="gen" id="gen"><span class="spinner"></span>正在生成无猜棋盘…</div>
+      <div class="toast" id="toast">
+        <div class="t-title" id="toastTitle">🎉 胜利</div>
+        <div class="t-sub" id="toastSub">用时 0 秒</div>
+        <div class="toast-actions">
+          <button id="toastBtn">再来一局</button>
+          <button id="toastShare" class="ghost">复制战绩</button>
+        </div>
+      </div>
+      <div class="settle" id="settle" hidden>
+        <div class="settle-card">
+          <div class="st-head" id="stHead">排位胜利</div>
+          <div class="st-emblem" id="stEmblem"></div>
+          <div class="st-rank" id="stRank">倔强青铜 Ⅲ</div>
+          <div class="st-gain" id="stGain">+1 ★</div>
+          <div class="st-bar"><i id="stBar"></i></div>
+          <div class="st-note" id="stNote"></div>
+          <div class="st-meta" id="stMeta"></div>
+          <div class="st-actions">
+            <button class="primary" id="stNext">继续排位</button>
+            <button id="stExit">退出</button>
+          </div>
+          <button class="st-share" id="stShare">复制战绩</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="lvl-settle" id="lvlSettle" hidden>
+      <div class="ls-card">
+        <div class="ls-kicker" id="lsKicker">关卡完成</div>
+        <div class="ls-title" id="lsTitle">初次上阵</div>
+        <div class="ls-stars" id="lsStars">
+          <span class="ls-star">★</span><span class="ls-star">★</span><span class="ls-star">★</span>
+        </div>
+        <div class="ls-sub" id="lsSub">用时 0 秒</div>
+        <div class="ls-actions">
+          <button class="ghost" id="lsBack">列表</button>
+          <button id="lsRetry">重打</button>
+          <button class="primary" id="lsNext">下一关</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>左键翻开</span><span>右键插旗</span><span>数字上左键连开</span><span><kbd>R</kbd> 重开</span>
+      <span id="modeNote" class="mode-note"></span>
+      <span class="meta-season" id="metaSeason">S1 赛季</span>
+    </div>
+  </div>
+</div>
+
+<!-- 排位面板 -->
+<div class="panel" id="dailyPanel" hidden>
+  <div class="panel-card">
+    <button class="panel-x" id="dailyClose" aria-label="关闭">✕</button>
+    <div class="daily-hero">
+      <div class="dh-day"><span id="dhDay">11 月 16 日</span><i>每日挑战 · 每天一张新棋盘</i></div>
+      <div class="dh-streak"><b id="dhStreak">0</b><span>连续天数</span></div>
+    </div>
+    <div class="daily-cal" id="dailyCal"></div>
+    <div class="rank-stats" id="dailyStats"></div>
+    <button class="btn-primary" id="dailyStart">开始今日挑战</button>
+    <div class="daily-note" id="dailyNote">每天 0 点刷新 · 16×16 / 40 雷</div>
+  </div>
+</div>
+
+<div class="panel" id="rankPanel" hidden>
+  <div class="panel-card">
+    <button class="panel-x" id="rankClose" aria-label="关闭">✕</button>
+    <div class="rank-hero">
+      <span class="rk-emblem r-bronze" id="rkBig"></span>
+      <div style="flex:1;min-width:0">
+        <div class="rk-t" id="rkTitle">倔强青铜 Ⅲ</div>
+        <div class="rk-s" id="rkSub">S1 赛季 · 还没打过排位</div>
+        <div class="rk-prog">
+          <div class="rk-bar gold"><i id="rkBar"></i></div>
+          <span id="rkStarTxt">0 / 3 ★</span>
+        </div>
+      </div>
+    </div>
+    <div class="rank-stats" id="rkStats"></div>
+    <div class="rank-hist"><span class="rh-label">最近战绩</span><div class="rh-dots" id="rkHist"></div></div>
+    <div class="rank-pick" id="rkPick"></div>
+    <button class="btn-primary" id="rkStart">开始排位</button>
+    <div class="panel-note">排位赛强制开启无猜模式，胜负只取决于推理与速度。输了掉 1 星，晋级需要打满本段星数，连胜与破纪录额外加星。</div>
+  </div>
+</div>
+
+<!-- 成就面板 -->
+<div class="panel" id="achPanel" hidden>
+  <div class="panel-card">
+    <button class="panel-x" id="achClose" aria-label="关闭">✕</button>
+    <div class="ach-hero">
+      <span class="ach-trophy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v4.2A5 5 0 0 1 7 8.2z"/><path d="M7 5H4.4v1.6A3.4 3.4 0 0 0 8 10M17 5h2.6v1.6A3.4 3.4 0 0 1 16 10"/><path d="M12 13.2V16M8.6 20h6.8M9.6 16h4.8l.8 4H8.8z"/></svg>
+      </span>
+      <div style="flex:1;min-width:0">
+        <div class="ach-score"><b id="achPts">0</b><span>点数</span></div>
+        <div class="rk-s" id="achSub">已解锁 0 / 31</div>
+        <div class="rk-prog">
+          <div class="rk-bar gold"><i id="achBar"></i></div>
+          <span id="achPct">0%</span>
+        </div>
+      </div>
+    </div>
+    <div class="ach-tabs" id="achTabs">
+      <button data-f="all" class="active">全部</button>
+      <button data-f="unlocked">已解锁</button>
+      <button data-f="locked">未解锁</button>
+    </div>
+    <div class="ach-list" id="achList"></div>
+  </div>
+</div>
+
+<!-- 战役面板 -->
+<div class="panel" id="campPanel" hidden>
+  <div class="panel-card">
+    <button class="panel-x" id="campClose" aria-label="关闭">✕</button>
+    <div class="camp-top">
+      <span class="camp-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 6.4 12 3.2l7.4 3.2-7.4 3.2z"/><path d="M4.6 12 12 8.8l7.4 3.2-7.4 3.2z"/><path d="M4.6 17.6 12 14.4l7.4 3.2-7.4 3.2z"/></svg>
+      </span>
+      <div style="flex:1;min-width:0">
+        <div class="ct-t">战役</div>
+        <div class="ct-s" id="campSub">5 章 30 关</div>
+        <div class="rk-prog">
+          <div class="rk-bar"><i id="campBar"></i></div>
+          <span id="campPct">0%</span>
+        </div>
+      </div>
+    </div>
+    <div class="camp-chapters" id="campList"></div>
+    <div class="panel-note">每关通关即解锁下一关，用时越短星数越高。标「禁旗」的关卡不能插旗，标「无猜」的关卡保证能纯逻辑推完。</div>
+  </div>
+</div>
+
+<!-- 数据统计面板 -->
+<div class="panel" id="statsPanel" hidden>
+  <div class="panel-card">
+    <button class="panel-x" id="statsClose" aria-label="关闭">✕</button>
+    <div class="stat-hero">
+      <span class="sh-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16"/><path d="M8.4 16.6V11M12.4 16.6V7.4M16.4 16.6v-3.4"/></svg>
+      </span>
+      <div style="flex:1;min-width:0">
+        <div class="sh-t">数据统计</div>
+        <div class="sh-s" id="statSub">还没有对局记录</div>
+      </div>
+    </div>
+    <div class="stat-big" id="statBig"></div>
+    <div class="stat-sec">最近 30 局用时</div>
+    <div class="chart-card" id="statChart"></div>
+    <div class="stat-sec">各难度胜率</div>
+    <div id="statWr"></div>
+    <div class="stat-sec">个人最佳</div>
+    <div class="best-table" id="statBest"></div>
+    <div class="stat-sec">显示设置</div>
+    <div id="statSet"></div>
+  </div>
+</div>
+
+<div class="ach-toasts" id="achToasts"></div>
+
+<button class="reopen" id="reopen" hidden>扫雷已关闭 · 点此重新打开</button>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-card">
+    <h3>自定义难度</h3>
+    <div class="field"><label>行数</label><input id="inRows" type="number" min="5" max="40" value="12"></div>
+    <div class="field"><label>列数</label><input id="inCols" type="number" min="5" max="40" value="12"></div>
+    <div class="field"><label>雷数</label><input id="inMines" type="number" min="1" max="668" value="24"></div>
+    <div class="modal-note" id="modalNote"></div>
+    <div class="modal-actions">
+      <button id="cancelCustom">取消</button>
+      <button id="okCustom" class="primary">开始</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------------- 常量 ---------------- */
+  const LEVELS = {
+    beginner:     { rows: 9,  cols: 9,  mines: 10, cell: 42 },
+    intermediate: { rows: 16, cols: 16, mines: 40, cell: 34 },
+    expert:       { rows: 16, cols: 30, mines: 99, cell: 28 }
+  };
+
+  const FLAG_SVG =
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M9 4.6v14.2" stroke="#5b6472" stroke-width="2.1" stroke-linecap="round"/>' +
+      '<path d="M9.6 5.1 17.4 8.4 9.6 11.7Z" fill="#e23b3b"/>' +
+      '<rect x="6.3" y="18.3" width="5.4" height="2.1" rx="1" fill="#5b6472"/>' +
+    '</svg>';
+
+  const MINE_SVG =
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<g stroke="#2b3138" stroke-width="1.9" stroke-linecap="round">' +
+        '<path d="M12 2.6v3.3M12 18.1v3.3M2.6 12h3.3M18.1 12h3.3M5.4 5.4l2.3 2.3M16.3 16.3l2.3 2.3M18.6 5.4l-2.3 2.3M7.7 16.3l-2.3 2.3"/>' +
+      '</g>' +
+      '<circle cx="12" cy="12" r="4.9" fill="#2b3138"/>' +
+      '<circle cx="10.2" cy="10.2" r="1.15" fill="#ffffff" opacity=".9"/>' +
+    '</svg>';
+
+  const BEST_KEY = 'win11.minesweeper.best.v1';
+  const NG_KEY   = 'win11.minesweeper.noguess.v1';
+
+  /* ---------------- DOM ---------------- */
+  const boardEl    = document.getElementById('board');
+  const mineCountEl= document.getElementById('mineCount');
+  const timerEl    = document.getElementById('timer');
+  const faceEl     = document.getElementById('reset');
+  const bestValEl  = document.getElementById('bestVal');
+  const segEl      = document.getElementById('seg');
+  const mineChip   = document.getElementById('mineChip');
+  const toast      = document.getElementById('toast');
+  const toastTitle = document.getElementById('toastTitle');
+  const toastSub   = document.getElementById('toastSub');
+  const toastBtn   = document.getElementById('toastBtn');
+  const modal      = document.getElementById('modal');
+  const inRows     = document.getElementById('inRows');
+  const inCols     = document.getElementById('inCols');
+  const inMines    = document.getElementById('inMines');
+  const modalNote  = document.getElementById('modalNote');
+  const winEl      = document.getElementById('win');
+  const titlebarEl = document.getElementById('titlebar');
+  const ngToggle   = document.getElementById('ngToggle');
+  const genEl      = document.getElementById('gen');
+  const modeNote   = document.getElementById('modeNote');
+
+  /* ---------------- 状态 ---------------- */
+  let level  = 'beginner';
+  let custom = { rows: 12, cols: 12, mines: 24, cell: 32 };
+  let G = null;
+  let els = [];
+  let bests = loadBests();
+  let suppressClick = false;
+  let pressTimer = null;
+  let genTimer = null;
+  let genToken = 0;
+  let noGuess = loadNoGuess();
+
+  function cfg() {
+    return level === 'custom' ? Object.assign({}, custom) : Object.assign({}, LEVELS[level]);
+  }
+
+  function loadNoGuess() {
+    try { return localStorage.getItem(NG_KEY) === '1'; } catch (e) { return false; }
+  }
+  function loadBests() {
+    try { return JSON.parse(localStorage.getItem(BEST_KEY)) || {}; }
+    catch (e) { return {}; }
+  }
+  function saveBests() {
+    try { localStorage.setItem(BEST_KEY, JSON.stringify(bests)); } catch (e) {}
+  }
+
+  /* ---------------- 新游戏 ---------------- */
+  function newGame() {
+    const c = cfg();
+    // 先停旧局：否则旧 interval 会继续跑，把 page uptime 写进新局的计时器
+    if (G) stopTimer();
+    genToken++;                       // 让仍在排队的异步生成回调作废
+    G = {
+      rows: c.rows, cols: c.cols, mines: c.mines,
+      cells: [],
+      started: false, over: false, won: false, generating: false,
+      flags: 0, revealed: 0,
+      t0: 0, elapsed: 0, timer: null,
+      exploded: -1, bv: 0,
+      perf: { maxBlank: 0, chords: 0, flags: 0 }
+    };
+    for (let i = 0, n = c.rows * c.cols; i < n; i++) {
+      G.cells.push({ mine: false, adj: 0, open: false, flag: false });
+    }
+    G.nn = [];
+    for (let i = 0, n = c.rows * c.cols; i < n; i++) G.nn.push(neighbors(i));
+    cursorIdx = -1;
+    boardEl.classList.remove('win', 'lose');
+    buildDom();
+    fitCells();
+    paint();
+    setTimer(0);
+    setFace('🙂');
+    hideToast();
+    hideGen();
+    hideSettle();
+    lvlSettle.hidden = true;
+    updateMineCount();
+    updateBestLabel();
+    markTabs();
+    ngToggle.checked = noGuess;
+    ngToggle.disabled = ranked || dailyMode || campaignMode;
+    modeNote.classList.remove('warn');
+    if (noteTimer) { clearTimeout(noteTimer); noteTimer = null; }
+    if (ranked) {
+      modeNote.textContent = '排位赛 · ' + rankLabel(profile.rank) + ' · 强制无猜';
+    } else if (dailyMode) {
+      modeNote.textContent = '每日挑战 ' + keyOfStamp(dailyStamp) + ' · 固定种子';
+    } else if (campaignMode && LV_FLAT[campaignIdx]) {
+      const clique = LV_FLAT[campaignIdx];
+      modeNote.textContent = '战役 ' + (campaignIdx + 1) + '/' + LV_TOTAL + ' · ' + clique.name +
+        ' · 目标 ' + clique.time + ' 秒' + (clique.noflag ? ' · 禁旗' : '');
+    } else {
+      modeNote.textContent = noGuess ? '无猜模式：本局保证可纯逻辑通关' : '';
+    }
+    if (campaignMode && LV_FLAT[campaignIdx]) G.limit = levelLimit(LV_FLAT[campaignIdx]);
+    resetHints();
+    updateRankChip();
+    updateDailyChip();
+    updateCampMini();
+  }
+
+  function buildDom() {
+    boardEl.style.setProperty('--cols', String(G.cols));
+    let html = '';
+    for (let i = 0, n = G.cells.length; i < n; i++) html += '<div class="cell" data-i="' + i + '"></div>';
+    boardEl.innerHTML = html;
+    els = Array.prototype.slice.call(boardEl.children);
+  }
+
+  function fitCells() {
+    const base = cfg().cell;
+    const availW = Math.min(window.innerWidth - 70, 1180);
+    const availH = Math.max(240, window.innerHeight - 290);
+    const byW = Math.floor((availW - (G.cols - 1) * 2 - 22) / G.cols);
+    const byH = Math.floor((availH - (G.rows - 1) * 2 - 22) / G.rows);
+    const cell = Math.max(10, Math.min(base, byW, byH));
+    boardEl.style.setProperty('--cell', cell + 'px');
+  }
+
+  /* ---------------- 渲染 ---------------- */
+  function paint() {
+    const over = G.over, won = G.won;
+    for (let i = 0, n = G.cells.length; i < n; i++) {
+      const c = G.cells[i];
+      const el = els[i];
+      let cls = 'cell';
+      let html = '';
+
+      if (c.open) {
+        cls += ' open';
+        if (c.mine) {
+          cls += ' mine' + (i === G.exploded ? ' boom' : '');
+          html = MINE_SVG;
+        } else if (c.adj > 0) {
+          cls += ' n' + c.adj;
+          html = String(c.adj);
+        }
+      } else if (over && !won && c.mine && !c.flag) {
+        cls += ' open mine dim';
+        html = MINE_SVG;
+      } else if (c.flag) {
+        cls += ' flag';
+        html = FLAG_SVG;
+        if (over && !won && !c.mine) {
+          cls += ' wrongflag';
+          html += '<span class="x">✕</span>';
+        }
+      }
+
+      if (el.className !== cls) el.className = cls;
+      if (el._html !== html) { el.innerHTML = html; el._html = html; }
+    }
+    if (cursorIdx >= 0 && cursorIdx < els.length) paintCursor();
+  }
+
+  function flash(list) {
+    for (let i = 0; i < list.length; i++) {
+      const el = els[list[i]];
+      if (!el) continue;
+      el.classList.add('pop');
+      setTimeout(function () { el.classList.remove('pop'); }, 220);
+    }
+  }
+
+  /* ---------------- 布雷 ---------------- */
+  function clearMines() {
+    for (let i = 0, n = G.cells.length; i < n; i++) {
+      G.cells[i].mine = false;
+      G.cells[i].adj = 0;
+    }
+  }
+
+  function placeMines(safeIdx) {
+    clearMines();
+    const cols = G.cols, rows = G.rows;
+    const sr = Math.floor(safeIdx / cols), sc = safeIdx % cols;
+    const forbidden = new Set();
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const r = sr + dr, cc = sc + dc;
+        if (r >= 0 && r < rows && cc >= 0 && cc < cols) forbidden.add(r * cols + cc);
+      }
+    }
+    const pool = [];
+    for (let i = 0, n = rows * cols; i < n; i++) if (!forbidden.has(i)) pool.push(i);
+
+    const count = Math.min(G.mines, pool.length);
+    for (let i = 0; i < count; i++) {
+      const j = i + Math.floor(Math.random() * (pool.length - i));
+      const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+      G.cells[pool[i]].mine = true;
+    }
+    G.mines = count;
+
+    for (let r = 0; r < rows; r++) {
+      for (let cc = 0; cc < cols; cc++) {
+        const idx = r * cols + cc;
+        if (G.cells[idx].mine) continue;
+        let a = 0;
+        for (const n of neighbors(idx)) if (G.cells[n].mine) a++;
+        G.cells[idx].adj = a;
+      }
+    }
+  }
+
+  function neighbors(i) {
+    const cols = G.cols, rows = G.rows;
+    const r = Math.floor(i / cols), c = i % cols;
+    const out = [];
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) out.push(nr * cols + nc);
+      }
+    }
+    return out;
+  }
+
+  /* ---------------- 逻辑求解器（无猜模式） ---------------- */
+  /* SOLVER-START */
+  const SOLVER_CAP = 400000;
+
+  function buildAdj() {
+    const n = G.rows * G.cols;
+    const adj = new Int16Array(n);
+    for (let i = 0; i < n; i++) adj[i] = G.cells[i].mine ? -1 : G.cells[i].adj;
+    return adj;
+  }
+
+  function floodCount(start, revealed, flagged, adj, nn) {
+    if (revealed[start] || flagged[start]) return 0;
+    let cnt = 0;
+    const stack = [start];
+    while (stack.length) {
+      const k = stack.pop();
+      if (revealed[k] || flagged[k]) continue;
+      revealed[k] = 1; cnt++;
+      if (adj[k] === 0) {
+        const list = nn[k];
+        for (let j = 0; j < list.length; j++) {
+          const x = list[j];
+          if (!revealed[x] && !flagged[x] && adj[x] >= 0) stack.push(x);
+        }
+      }
+    }
+    return cnt;
+  }
+
+  function enumComponent(cells, cons, cap) {
+    const n = cells.length;
+    const map = new Map();
+    for (let i = 0; i < n; i++) map.set(cells[i], i);
+
+    const cst = [];
+    for (let c = 0; c < cons.length; c++) {
+      const cs = cons[c].cells;
+      const v = new Array(cs.length);
+      for (let j = 0; j < cs.length; j++) v[j] = map.get(cs[j]);
+      cst.push({ v: v, need: cons[c].need, rem: cs.length });
+    }
+    const vCons = new Array(n);
+    for (let i = 0; i < n; i++) vCons[i] = [];
+    for (let ci = 0; ci < cst.length; ci++) {
+      const v = cst[ci].v;
+      for (let j = 0; j < v.length; j++) vCons[v[j]].push(ci);
+    }
+    const order = new Array(n);
+    for (let i = 0; i < n; i++) order[i] = i;
+    order.sort(function (a, b) { return vCons[b].length - vCons[a].length; });
+
+    const state = new Int8Array(n).fill(-1);
+    const hist = [], byK = [];
+    let total = 0, nodes = 0, aborted = false;
+
+    function rec(pos, used) {
+      if (aborted) return;
+      if (++nodes > cap) { aborted = true; return; }
+      if (pos === n) {
+        for (let i = 0; i < cst.length; i++) if (cst[i].need !== 0) return;
+        total++;
+        hist[used] = (hist[used] || 0) + 1;
+        if (!byK[used]) byK[used] = new Int32Array(n);
+        const a = byK[used];
+        for (let i = 0; i < n; i++) if (state[i] === 1) a[i]++;
+        return;
+      }
+      const v = order[pos], cs = vCons[v];
+      for (let t = 0; t < 2; t++) {
+        const val = t === 0 ? 1 : 0;
+        state[v] = val;
+        let ok = true, k = 0;
+        for (; k < cs.length; k++) {
+          const c = cst[cs[k]];
+          c.rem--;
+          if (val === 1) c.need--;
+          if (c.need < 0 || c.need > c.rem || (c.rem === 0 && c.need !== 0)) { ok = false; break; }
+        }
+        if (ok) rec(pos + 1, used + (val === 1 ? 1 : 0));
+        const lim = ok ? cs.length : k + 1;
+        for (let u = 0; u < lim; u++) {
+          const c = cst[cs[u]];
+          c.rem++;
+          if (val === 1) c.need++;
+        }
+        state[v] = -1;
+        if (aborted) return;
+      }
+    }
+    rec(0, 0);
+    return { cells: cells, n: n, hist: hist, byK: byK, total: total, aborted: aborted };
+  }
+
+  function solveOnce(adj, revealed, flagged, mines, nn, rows, cols) {
+    const n = rows * cols;
+    let flagCount = 0;
+    for (let i = 0; i < n; i++) if (flagged[i]) flagCount++;
+    const R = mines - flagCount;
+
+    const safe = [], sure = [];
+    const cons = [];
+    for (let i = 0; i < n; i++) {
+      if (!revealed[i] || adj[i] <= 0) continue;
+      const list = nn[i];
+      const unk = [];
+      let fl = 0;
+      for (let j = 0; j < list.length; j++) {
+        const k = list[j];
+        if (flagged[k]) fl++;
+        else if (!revealed[k]) unk.push(k);
+      }
+      if (!unk.length) continue;
+      const need = adj[i] - fl;
+      if (need === 0) { for (let j = 0; j < unk.length; j++) safe.push(unk[j]); continue; }
+      if (need === unk.length) { for (let j = 0; j < unk.length; j++) sure.push(unk[j]); continue; }
+      if (need < 0) continue;
+      cons.push({ cells: unk, need: need });
+    }
+    if (safe.length || sure.length) return { safe: safe, sure: sure, aborted: false };
+
+    const unknownAll = [];
+    for (let i = 0; i < n; i++) if (!revealed[i] && !flagged[i]) unknownAll.push(i);
+    if (R === 0) return { safe: unknownAll, sure: [], aborted: false };
+    if (R === unknownAll.length) return { safe: [], sure: unknownAll, aborted: false };
+
+    const parent = new Map();
+    function find(x) {
+      let r = x;
+      while (parent.get(r) !== r) r = parent.get(r);
+      while (parent.get(x) !== r) { const nx = parent.get(x); parent.set(x, r); x = nx; }
+      return r;
+    }
+    const inCons = new Set();
+    for (let c = 0; c < cons.length; c++) {
+      const cs = cons[c].cells;
+      for (let j = 0; j < cs.length; j++) {
+        inCons.add(cs[j]);
+        if (!parent.has(cs[j])) parent.set(cs[j], cs[j]);
+      }
+    }
+    for (let c = 0; c < cons.length; c++) {
+      const cs = cons[c].cells;
+      for (let j = 1; j < cs.length; j++) {
+        const a = find(cs[0]), b = find(cs[j]);
+        if (a !== b) parent.set(a, b);
+      }
+    }
+    const groups = new Map();
+    for (let c = 0; c < cons.length; c++) {
+      const root = find(cons[c].cells[0]);
+      if (!groups.has(root)) groups.set(root, []);
+      groups.get(root).push(cons[c]);
+    }
+    const rootCells = new Map();
+    inCons.forEach(function (cell) {
+      const root = find(cell);
+      if (!rootCells.has(root)) rootCells.set(root, []);
+      rootCells.get(root).push(cell);
+    });
+
+    const comps = [];
+    let aborted = false;
+    groups.forEach(function (cs, root) {
+      const comp = enumComponent(rootCells.get(root) || [], cs, SOLVER_CAP);
+      if (comp.aborted) aborted = true;
+      comps.push(comp);
+    });
+    if (aborted) return { safe: [], sure: [], aborted: true };
+
+    const F = unknownAll.length - inCons.size;
+    let sumMin = 0, sumMax = 0;
+    for (let j = 0; j < comps.length; j++) {
+      const c = comps[j];
+      let mn = Infinity, mx = -1;
+      for (let k = 0; k < c.hist.length; k++) {
+        if (!c.hist[k]) continue;
+        if (k < mn) mn = k;
+        if (k > mx) mx = k;
+      }
+      c.minM = mn === Infinity ? 0 : mn;
+      c.maxM = mx < 0 ? 0 : mx;
+      sumMin += c.minM;
+      sumMax += c.maxM;
+    }
+    for (let j = 0; j < comps.length; j++) {
+      const c = comps[j];
+      const kmin = Math.max(c.minM, R - (sumMax - c.maxM) - F);
+      const kmax = Math.min(c.maxM, R - (sumMin - c.minM));
+      for (let i = 0; i < c.n; i++) {
+        let any = false, allMine = true, allSafe = true;
+        for (let k = kmin; k <= kmax; k++) {
+          if (!c.hist[k]) continue;
+          any = true;
+          const m = c.byK[k][i];
+          if (m !== c.hist[k]) allMine = false;
+          if (m !== 0) allSafe = false;
+        }
+        if (!any) continue;
+        if (allMine) sure.push(c.cells[i]);
+        else if (allSafe) safe.push(c.cells[i]);
+      }
+    }
+    if (F > 0) {
+      let maxReach = 0, minReach = 0;
+      for (let j = 0; j < comps.length; j++) {
+        const c = comps[j];
+        maxReach += Math.min(c.maxM, R - (sumMin - c.minM));
+        minReach += Math.max(c.minM, R - (sumMax - c.maxM) - F);
+      }
+      if (R === maxReach + F) {
+        for (let i = 0; i < n; i++) if (!revealed[i] && !flagged[i] && !inCons.has(i)) sure.push(i);
+      }
+      if (R === minReach) {
+        for (let i = 0; i < n; i++) if (!revealed[i] && !flagged[i] && !inCons.has(i)) safe.push(i);
+      }
+    }
+    return { safe: safe, sure: sure, aborted: false };
+  }
+
+  function canSolveByLogic(firstIdx) {
+    const rows = G.rows, cols = G.cols, nn = G.nn;
+    const n = rows * cols;
+    const adj = buildAdj();
+    const revealed = new Uint8Array(n);
+    const flagged = new Uint8Array(n);
+    let count = floodCount(firstIdx, revealed, flagged, adj, nn);
+    const target = n - G.mines;
+
+    for (let step = 0; step < 500; step++) {
+      if (count >= target) return true;
+      const res = solveOnce(adj, revealed, flagged, G.mines, nn, rows, cols);
+      if (!res || res.aborted) return false;
+      let progressed = false;
+      for (let j = 0; j < res.sure.length; j++) {
+        const i = res.sure[j];
+        if (!flagged[i]) { flagged[i] = 1; progressed = true; }
+      }
+      for (let j = 0; j < res.safe.length; j++) {
+        const i = res.safe[j];
+        if (!revealed[i]) {
+          const add = floodCount(i, revealed, flagged, adj, nn);
+          if (add > 0) { count += add; progressed = true; }
+        }
+      }
+      if (!progressed) return false;
+    }
+    return false;
+  }
+
+  function generateBoard(firstIdx) {
+    const t0 = performance.now();
+    let tries = 0;
+    for (;;) {
+      placeMines(firstIdx);
+      tries++;
+      if (!noGuess) return { tries: tries, failed: false };
+      if (canSolveByLogic(firstIdx)) return { tries: tries, failed: false };
+      if (tries >= 400 || performance.now() - t0 > 900) {
+        return { tries: tries, failed: true };
+      }
+    }
+  }
+  /* SOLVER-END */
+
+  /* ---------------- 生成中提示 ---------------- */
+  function showGen() {
+    if (genTimer) return;
+    genTimer = setTimeout(function () { genEl.classList.add('show'); }, 40);
+  }
+  function hideGen() {
+    if (genTimer) { clearTimeout(genTimer); genTimer = null; }
+    genEl.classList.remove('show');
+  }
+
+  /* ---------------- 操作 ---------------- */
+  function primaryAction(i) {
+    if (!G || G.over || G.generating) return;
+    if (i < 0 || i >= G.cells.length) return;
+    const c = G.cells[i];
+    if (c.flag) return;
+    if (c.open) { chord(i); return; }
+
+    if (!G.started) {
+      const token = ++genToken;
+      G.generating = true;
+      if (noGuess) showGen();
+      setTimeout(function () {
+        if (token !== genToken || !G || G.started || G.over) return;   // 已被重开 / 换难度 / 切模式 / 判负打断
+        let res = { tries: 0, failed: false };
+        try {
+          if (dailyMode) {
+            placeMinesDaily(i);
+            res.tries = 1;
+          } else {
+            res = generateBoard(i);
+          }
+        } catch (err) {
+          res = { tries: 0, failed: true };   // 生成异常也不能把棋局卡在 generating 状态
+        }
+        if (token !== genToken || !G) return;
+        G.bv = compute3BV();
+        G.generating = false;
+        hideGen();
+        G.started = true;
+        startTimer();
+        updateMineCount();
+        updateHintBtn();
+        reveal(i);
+        if (res.failed) {
+          modeNote.classList.add('warn');
+          modeNote.textContent = '无猜生成超时 · 本局已退回普通棋盘';
+          setTimeout(function () {
+            showToast('⚠️ 没能凑出无猜棋盘', '本局仍可能出现必须靠猜的局面');
+          }, 220);
+        }
+      }, 0);
+      return;
+    }
+    reveal(i);
+  }
+
+  function reveal(start) {
+    const c0 = G.cells[start];
+    if (c0.open || c0.flag || G.over) return;
+
+    if (c0.mine) {
+      c0.open = true;
+      G.exploded = start;
+      lose();
+      return;
+    }
+
+    const opened = [];
+    const stack = [start];
+    while (stack.length) {
+      const k = stack.pop();
+      const c = G.cells[k];
+      if (c.open || c.flag) continue;
+      c.open = true;
+      G.revealed++;
+      opened.push(k);
+      if (c.adj === 0) {
+        for (const n of neighbors(k)) {
+          const nc = G.cells[n];
+          if (!nc.open && !nc.flag && !nc.mine) stack.push(n);
+        }
+      }
+    }
+    if (opened.length > G.perf.maxBlank) G.perf.maxBlank = opened.length;
+    sfx(opened.length > 1 ? 'spread' : 'open');
+    paint();
+    flash(opened);
+    checkWin();
+  }
+
+  function chord(i) {
+    if (!G || G.over || G.generating) return;
+    const c = G.cells[i];
+    if (!c.open || c.adj === 0) return;
+    const nb = neighbors(i);
+    let flagged = 0;
+    for (const k of nb) if (G.cells[k].flag) flagged++;
+    if (flagged !== c.adj) {
+      if (els[i]) {
+        els[i].classList.add('pop');
+        setTimeout(function () { if (els[i]) els[i].classList.remove('pop'); }, 200);
+      }
+      return;
+    }
+    G.perf.chords++;   // 只有真正触发的连开才计入统计
+    const targets = nb.filter(function (k) {
+      return !G.cells[k].flag && !G.cells[k].open;
+    });
+    for (const k of targets) {
+      if (G.over) break;
+      reveal(k);
+    }
+  }
+
+  function toggleFlag(i) {
+    if (!G || G.over || G.generating) return;
+    if (campaignMode && LV_FLAT[campaignIdx] && LV_FLAT[campaignIdx].noflag) {
+      if (!G.noflagWarned) {
+        G.noflagWarned = true;
+        flashNote('本关禁用旗帜，只能靠数字推理');
+        sfx('nope');
+      }
+      return;
+    }
+    const c = G.cells[i];
+    if (c.open) return;
+    if (c.flag) {
+      c.flag = false;
+      G.flags--;
+    } else {
+      if (G.flags >= G.mines) {
+        mineChip.classList.add('shake');
+        setTimeout(function () { mineChip.classList.remove('shake'); }, 320);
+        return;
+      }
+      c.flag = true;
+      G.flags++;
+      G.perf.flags++;
+    }
+    sfx(c.flag ? 'flag' : 'unflag');
+    paint();
+    if (c.flag) {
+      const el = els[i];
+      if (el) {
+        el.classList.add('flagpop');
+        setTimeout(function () { if (el) el.classList.remove('flagpop'); }, 320);
+      }
+    }
+    updateMineCount();
+  }
+
+  /* ---------------- 计时 / 计数 ---------------- */
+  function startTimer() {
+    if (G.timer) return;
+    G.t0 = performance.now();
+    G.timer = setInterval(function () {
+      const real = Math.floor((performance.now() - G.t0) / 1000);
+      setTimer(Math.min(999, real));            // 显示沿用扫雷惯例封顶 999
+      if (G.limit && !G.over && real >= G.limit) campTimeout();   // 但限时判定用真实秒数
+    }, 100);
+  }
+  function stopTimer() {
+    if (G.timer) { clearInterval(G.timer); G.timer = null; }
+  }
+  function setTimer(v) { timerEl.textContent = String(v).padStart(3, '0'); }
+  function updateMineCount() {
+    mineCountEl.textContent = String(G.mines - G.flags).padStart(3, '0');
+  }
+  function elapsedSeconds() {
+    if (!G || !G.t0) return 0;
+    // 至少记 1 秒：避免极小棋盘出现「最佳 00:00 / 效率 0.00」
+    return Math.max(1, Math.floor((performance.now() - G.t0) / 1000));
+  }
+
+  /* ---------------- 结束判定 ---------------- */
+  function checkWin() {
+    if (G.over) return;
+    if (G.revealed !== G.rows * G.cols - G.mines) return;
+    G.over = true;
+    G.won = true;
+    stopTimer();
+    setFace('😎');
+    boardEl.classList.add('win');
+
+    const secs = elapsedSeconds();
+    setTimer(Math.min(999, secs));
+
+    // 自动补旗子
+    const rest = [];
+    for (let i = 0, n = G.cells.length; i < n; i++) {
+      const c = G.cells[i];
+      if (c.mine && !c.flag) { c.flag = true; G.flags++; rest.push(i); }
+    }
+    paint();
+    updateMineCount();
+    const restEls = rest.map(function (idx) { return els[idx]; }).filter(Boolean);
+    restEls.forEach(function (el, k) {
+      setTimeout(function () {
+        el.classList.add('flagpop');
+        setTimeout(function () { el.classList.remove('flagpop'); }, 320);
+      }, Math.min(k, 24) * 40);
+    });
+
+    const key = bestKey();
+    const prev = bests[key];
+    let isBest = false;
+    if (!dailyMode && !campaignMode) {
+      if (prev == null || secs < prev) { bests[key] = secs; saveBests(); isBest = true; }
+      updateBestLabel();
+    }
+
+    sfx('win');
+    if (dailyMode) recordDaily(true, secs);
+    lastResult = { win: true, secs: secs };
+    if (campaignMode) lastCampStars = starsFor(LV_FLAT[campaignIdx], secs);
+    finishGame(true, secs, isBest);
+
+    if (campaignMode && LV_FLAT[campaignIdx]) {
+      const ci = campaignIdx, cs = lastCampStars, clv = LV_FLAT[campaignIdx];
+      setTimeout(function () { showLevelSettle(ci, cs, secs, clv); }, 460);
+      if (modeNote) modeNote.textContent = '战役 ' + (ci + 1) + '/' + LV_TOTAL + ' · ' + clv.name + ' · ' + cs + ' 星';
+      return;
+    }
+
+    if (ranked) return;
+    setTimeout(function () {
+      if (dailyMode) {
+        showToast('✅ 每日挑战完成', secs + ' 秒 · 3BV ' + G.bv + ' · 连续 ' + ensureDaily().streak + ' 天');
+        return;
+      }
+      const tag = noGuess ? '无猜 · ' : '';
+      showToast('🎉 扫雷成功', isBest ? tag + '新纪录！用时 ' + secs + ' 秒' : tag + '用时 ' + secs + ' 秒 · 最佳 ' + fmtTime(bests[key]));
+    }, 260);
+  }
+
+  function lose() {
+    G.over = true;
+    G.won = false;
+    stopTimer();
+    setFace('😵');
+    paint();
+    boardEl.classList.remove('lose');
+    void boardEl.offsetWidth;
+    boardEl.classList.add('lose');
+    sfx('boom');
+    if (dailyMode) recordDaily(false, elapsedSeconds());
+    lastResult = { win: false, secs: elapsedSeconds() };
+    finishGame(false, elapsedSeconds(), false);
+    setTimeout(function () {
+      if (ranked) return;
+      if (campaignMode) {
+        showToast('💥 关卡失败', '第 ' + (campaignIdx + 1) + ' 关 · 踩到地雷了，可以重打');
+        return;
+      }
+      if (dailyMode) {
+        showToast('💥 每日挑战失败', '今天还能重试 · 提示还剩 ' + hintsLeft + ' 次');
+        return;
+      }
+      showToast('💥 踩到地雷了', '再试一次吧，这次运气会更好');
+    }, 320);
+  }
+
+  function setFace(f) { faceEl.textContent = f; }
+
+  function fmtTime(s) {
+    if (s == null) return '--:--';
+    const m = Math.floor(s / 60), ss = s % 60;
+    return String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+  }
+  function bestKey() {
+    // 自定义盘必须按尺寸分桶：否则 5×5 的 1 秒会冒充 40×40 的最佳成绩
+    if (level === 'custom' && !campaignMode) {
+      const c = cfg();
+      return 'custom:' + c.rows + 'x' + c.cols + '/' + c.mines + (noGuess ? '|ng' : '');
+    }
+    return level + (noGuess ? '|ng' : '');
+  }
+  function updateBestLabel() {
+    if (campaignMode || dailyMode) { bestValEl.textContent = '--:--'; return; }
+    const v = bests[bestKey()];
+    bestValEl.textContent = v != null ? fmtTime(v) : '--:--';
+  }
+
+  /* ---------------- Toast ---------------- */
+  function showToast(title, sub) {
+    toastTitle.textContent = title;
+    toastSub.textContent = sub;
+    if (toastBtn) toastBtn.textContent = campaignMode ? '重打本关' : (dailyMode ? '再试一次' : '再来一局');
+    toast.classList.add('show');
+  }
+  function hideToast() { toast.classList.remove('show'); }
+
+  /* ---------------- 标签页 ---------------- */
+  function markTabs() {
+    Array.prototype.forEach.call(segEl.querySelectorAll('button'), function (b) {
+      b.classList.toggle('active', b.dataset.level === level);
+    });
+  }
+
+  /* ---------------- 事件 ---------------- */
+  boardEl.addEventListener('click', function (e) {
+    const el = e.target.closest('.cell');
+    if (!el) return;
+    if (suppressClick) { suppressClick = false; return; }
+    primaryAction(+el.dataset.i);
+  });
+
+  boardEl.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    const el = e.target.closest('.cell');
+    if (!el) return;
+    toggleFlag(+el.dataset.i);
+  });
+
+  boardEl.addEventListener('auxclick', function (e) {
+    if (e.button !== 1) return;
+    const el = e.target.closest('.cell');
+    if (!el) return;
+    e.preventDefault();
+    const i = +el.dataset.i;
+    if (G.cells[i].open) chord(i);
+  });
+
+  // 触屏长按插旗（移动超过 10px 才取消，避免手指轻微抖动导致长按失效）
+  let pressStart = null;
+  boardEl.addEventListener('pointerdown', function (e) {
+    if (e.pointerType !== 'touch') return;
+    const el = e.target.closest('.cell');
+    if (!el) return;
+    const i = +el.dataset.i;
+    pressStart = { x: e.clientX, y: e.clientY };
+    suppressClick = false;   // 清掉上次长按残留，避免吞掉本次点击
+    pressTimer = setTimeout(function () {
+      pressTimer = null;
+      pressStart = null;
+      suppressClick = true;
+      toggleFlag(i);
+      if (navigator.vibrate) navigator.vibrate(12);
+    }, 360);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+    boardEl.addEventListener(ev, function () {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      pressStart = null;
+    });
+  });
+  boardEl.addEventListener('pointermove', function (e) {
+    if (!pressTimer || !pressStart) return;
+    if (Math.abs(e.clientX - pressStart.x) > 10 || Math.abs(e.clientY - pressStart.y) > 10) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+      pressStart = null;
+    }
+  });
+
+  ngToggle.addEventListener('change', function () {
+    if (ranked || dailyMode || campaignMode) { ngToggle.checked = noGuess; return; }
+    noGuess = ngToggle.checked;
+    try { localStorage.setItem(NG_KEY, noGuess ? '1' : '0'); } catch (e) {}
+    newGame();
+  });
+
+  faceEl.addEventListener('click', newGame);
+  toastBtn.addEventListener('click', newGame);
+
+  segEl.addEventListener('click', function (e) {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const lv = b.dataset.level;
+    if (lv === 'custom') {
+      inRows.value = custom.rows;
+      inCols.value = custom.cols;
+      inMines.value = custom.mines;
+      modalNote.textContent = '';
+      modal.hidden = false;
+      inRows.focus();
+      inRows.select && inRows.select();
+      return;
+    }
+    leaveRanked();
+    leaveDaily();
+    leaveCampaign();
+    level = lv;
+    newGame();
+  });
+
+  document.getElementById('cancelCustom').addEventListener('click', function () {
+    modal.hidden = true;
+  });
+
+  document.getElementById('okCustom').addEventListener('click', function () {
+    const r = clampInt(inRows.value, 5, 40, 12);
+    const c = clampInt(inCols.value, 5, 40, 12);
+    const total = r * c;
+    const maxMines = Math.max(1, total - 9);
+    let m = clampInt(inMines.value, 1, maxMines, Math.min(24, maxMines));
+    if (m > maxMines) m = maxMines;
+    // 自定义棋盘不能继承排位 / 每日 / 战役状态，否则会写错统计桶与段位
+    leaveRanked();
+    leaveDaily();
+    leaveCampaign();
+    custom = { rows: r, cols: c, mines: m, cell: 32 };
+    level = 'custom';
+    modal.hidden = true;
+    newGame();
+  });
+
+  modal.addEventListener('click', function (e) {
+    if (e.target === modal) modal.hidden = true;
+  });
+
+  function clampInt(v, min, max, dft) {
+    const n = parseInt(v, 10);
+    if (isNaN(n)) return dft;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  document.addEventListener('keydown', function (e) {
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;   // 别抢浏览器快捷键（Ctrl+R / Ctrl+D 等）
+    const k = e.key.toLowerCase();
+
+    // 有浮层时只允许 Esc / Tab 之类的通用操作，避免误触棋盘快捷键（主题、音效无害，放行）
+    const overlay = !modal.hidden || !rankPanel.hidden || !achPanel.hidden ||
+                    !campPanel.hidden || !statsPanel.hidden || !dailyPanel.hidden || !lvlSettle.hidden;
+    if (overlay && k !== 'escape' && k !== 't' && k !== 's') return;
+
+    // 键盘操作棋盘
+    if (k === 'arrowup' || k === 'arrowdown' || k === 'arrowleft' || k === 'arrowright') {
+      e.preventDefault();
+      moveCursor(k === 'arrowup' ? -1 : (k === 'arrowdown' ? 1 : 0),
+                 k === 'arrowleft' ? -1 : (k === 'arrowright' ? 1 : 0));
+      return;
+    }
+    if (k === ' ' || k === 'enter') {
+      if (e.target.tagName === 'BUTTON') return;
+      e.preventDefault();
+      if (cursorIdx < 0) moveCursor(0, 0);   // 还没动过光标就先落到中心
+      if (cursorIdx >= 0) primaryAction(cursorIdx);
+      return;
+    }
+    if (k === 'f') {
+      e.preventDefault();
+      if (cursorIdx < 0) moveCursor(0, 0);
+      if (cursorIdx >= 0) toggleFlag(cursorIdx);
+      return;
+    }
+
+    if (k === 'r') { newGame(); }
+    else if (k === '1') { leaveRanked(); leaveDaily(); leaveCampaign(); level = 'beginner'; newGame(); }
+    else if (k === '2') { leaveRanked(); leaveDaily(); leaveCampaign(); level = 'intermediate'; newGame(); }
+    else if (k === '3') { leaveRanked(); leaveDaily(); leaveCampaign(); level = 'expert'; newGame(); }
+    else if (k === 'd') { openDailyPanel(); }
+    else if (k === 'h') { giveHint(); }
+    else if (k === 's') { setSound(!soundOn); }
+    else if (k === 't') { toggleTheme(); }
+    else if (k === 'p') { rankPanel.hidden ? openRankPanel() : (rankPanel.hidden = true); }
+    else if (k === 'a') { achPanel.hidden ? openAchPanel() : (achPanel.hidden = true); }
+    else if (k === 'c') { campPanel.hidden ? openCampPanel() : (campPanel.hidden = true); }
+    else if (k === 'i') { statsPanel.hidden ? openStatsPanel() : (statsPanel.hidden = true); }
+    else if (k === 'n') {
+      if (ranked || dailyMode || campaignMode) return;
+      noGuess = !noGuess;
+      try { localStorage.setItem(NG_KEY, noGuess ? '1' : '0'); } catch (e) {}
+      newGame();
+    }
+    else if (k === 'escape') {
+      if (!modal.hidden) modal.hidden = true;
+      else if (!lvlSettle.hidden) { hideLevelSettle(); openCampPanel(); }
+      else if (!dailyPanel.hidden) dailyPanel.hidden = true;
+      else if (!rankPanel.hidden || !achPanel.hidden || !campPanel.hidden || !statsPanel.hidden) closePanels();
+    }
+  });
+
+  window.addEventListener('resize', function () {
+    if (!G) return;
+    fitCells();
+  });
+
+  /* ---------------- 窗口拖动 ---------------- */
+  (function dragWindow() {
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    titlebarEl.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('.wbtn, .icon-btn')) return;
+      if (winEl.classList.contains('max') || winEl.classList.contains('min')) return;
+      dragging = true;
+      sx = e.clientX; sy = e.clientY;
+      const st = getComputedStyle(winEl);
+      ox = parseFloat(winEl.style.getPropertyValue('--dx')) || 0;
+      oy = parseFloat(winEl.style.getPropertyValue('--dy')) || 0;
+      titlebarEl.setPointerCapture && titlebarEl.setPointerCapture(e.pointerId);
+      winEl.style.animation = 'none';
+      winEl.style.opacity = '1';
+      winEl.style.transition = 'none';
+      void st;
+    });
+    titlebarEl.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      const dx = ox + (e.clientX - sx);
+      const dy = oy + (e.clientY - sy);
+      winEl.style.setProperty('--dx', dx + 'px');
+      winEl.style.setProperty('--dy', dy + 'px');
+    });
+    ['pointerup', 'pointercancel'].forEach(function (ev) {
+      titlebarEl.addEventListener(ev, function () { dragging = false; });
+    });
+    titlebarEl.addEventListener('dblclick', function (e) {
+      if (e.target.closest('.wbtn, .icon-btn')) return;
+      if (winEl.classList.contains('min')) { winEl.classList.remove('min'); return; }
+      winEl.style.setProperty('--dx', '0px');
+      winEl.style.setProperty('--dy', '0px');
+    });
+  })();
+
+  /* ---------------- 标题栏按钮 ---------------- */
+  (function windowControls() {
+    const reopen = document.getElementById('reopen');
+    const minBtn = document.getElementById('winMin');
+    const maxBtn = document.getElementById('winMax');
+    const closeBtn = document.getElementById('winClose');
+    if (!minBtn || !maxBtn || !closeBtn || !reopen) return;
+
+    function refit() { setTimeout(function () { if (G) fitCells(); }, 60); }
+    function hideOverlays() {
+      closePanels();
+      modal.hidden = true;
+      hideToast();
+    }
+
+    minBtn.addEventListener('click', function () {
+      const on = winEl.classList.toggle('min');
+      minBtn.title = on ? '还原' : '最小化';
+      if (on) { winEl.classList.remove('max'); hideOverlays(); }
+      refit();
+    });
+    maxBtn.addEventListener('click', function () {
+      const on = winEl.classList.toggle('max');
+      if (on) { winEl.classList.remove('min'); winEl.style.setProperty('--dx', '0px'); winEl.style.setProperty('--dy', '0px'); }
+      maxBtn.title = on ? '还原' : '最大化';
+      refit();
+    });
+    closeBtn.addEventListener('click', function () {
+      hideOverlays();          // 面板是挂在 body 上的，不关会和隐藏的窗口一起「飘」在桌面上
+      winEl.hidden = true;
+      reopen.hidden = false;
+    });
+    reopen.addEventListener('click', function () {
+      winEl.hidden = false;
+      reopen.hidden = true;
+      refit();
+    });
+  })();
+
+  /* =========================================================
+     排位 & 成就
+     ========================================================= */
+  const PROFILE_KEY = 'win11.minesweeper.profile.v1';
+
+  const RANKS = [
+    { key: 'bronze',   name: '倔强青铜', short: '青铜', tierStars: 3 },
+    { key: 'silver',   name: '秩序白银', short: '白银', tierStars: 3 },
+    { key: 'gold',     name: '荣耀黄金', short: '黄金', tierStars: 4 },
+    { key: 'platinum', name: '尊贵铂金', short: '铂金', tierStars: 4 },
+    { key: 'diamond',  name: '永恒钻石', short: '钻石', tierStars: 5 },
+    { key: 'star',     name: '至尊星耀', short: '星耀', tierStars: 5 },
+    { key: 'king',     name: '最强王者', short: '王者', tierStars: 0 }
+  ];
+  const LAST_RI = RANKS.length - 1;
+  const ROMAN = { 3: 'Ⅲ', 2: 'Ⅱ', 1: 'Ⅰ' };
+  const STAR_REWARD = { beginner: 1, intermediate: 1, expert: 2 };
+  const SEASON_EPOCH = Date.UTC(2026, 10, 1);
+  const SEASON_DAYS = 30;
+
+  const EMBLEM_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+      '<path d="M12 2.7 4.7 5.4v6.2c0 4.6 3.1 8.4 7.3 9.8 4.2-1.4 7.3-5.2 7.3-9.8V5.4z" fill="currentColor" opacity=".95"/>' +
+      '<path d="M12 7.5l1.43 2.9 3.2.47-2.32 2.26.55 3.19L12 14.82l-2.86 1.5.55-3.19-2.32-2.26 3.2-.47z" fill="rgba(0,0,0,.26)"/>' +
+    '</svg>';
+
+  const GLYPH = {
+    flag:  '<path d="M6.5 3.6v17"/><path d="M6.6 4.7 16.4 7.6 6.6 10.5z" fill="currentColor" stroke="none"/>',
+    flame: '<path d="M12 21c3.3 0 5.6-2.2 5.6-5.2 0-3.6-3-5.2-3.6-8.8-1.6 1.2-2.1 2.8-2.1 4.2-1-.5-1.6-1.6-1.6-2.9-1.9 1.3-3.9 3.9-3.9 7.5C6.4 18.8 8.7 21 12 21z"/>',
+    crown: '<path d="M3.6 18h16.8"/><path d="M4.6 18l-1-9.2 5.1 3.6L12 5l3.3 7.4 5.1-3.6-1 9.2z"/>',
+    clock: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.2 2.1"/>',
+    grid:  '<rect x="3.6" y="3.6" width="16.8" height="16.8" rx="2.6"/><path d="M9.2 3.6v16.8M14.8 3.6v16.8M3.6 9.2h16.8M3.6 14.8h16.8"/>',
+    bomb:  '<circle cx="10.8" cy="13.6" r="5.9"/><path d="M14.8 9.6l1.9-1.9M16.7 7.7l1.7.4M16.9 7.5l.4 1.7"/><path d="M18.4 4.4l1.3 1.3"/>',
+    brain: '<path d="M9.6 5.4A2.9 2.9 0 0 0 6.4 8a2.9 2.9 0 0 0-1.5 5A2.9 2.9 0 0 0 7.1 18a2.9 2.9 0 0 0 4.3 1.2V6a2.4 2.4 0 0 0-1.8-2z"/><path d="M14.4 5.4A2.9 2.9 0 0 1 17.6 8a2.9 2.9 0 0 1 1.5 5 2.9 2.9 0 0 1-2.2 5 2.9 2.9 0 0 1-4.3 1.2"/>',
+    medal: '<circle cx="12" cy="14.4" r="5.4"/><path d="M8.2 3.4l2.5 5M15.8 3.4l-2.5 5"/><path d="M12 11.9l.86 1.86 2.04.29-1.48 1.4.38 2-1.8-1-1.8 1 .38-2-1.48-1.4 2.04-.29z" fill="currentColor" stroke="none"/>',
+    moon:  '<path d="M20 14.4A8.4 8.4 0 0 1 9.6 4 8.6 8.6 0 1 0 20 14.4z"/>',
+    star:  '<path d="M12 3.6l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6L3.4 10l6-.8z"/>',
+    shield:'<path d="M12 3.2l7 2.6v6.1c0 4.4-2.9 7.9-7 9.2-4.1-1.3-7-4.8-7-9.2V5.8z"/>',
+    bolt:  '<path d="M13.4 2.8 5.9 13.3h4.9l-1.3 7.9 7.7-11h-4.9z"/>',
+    hand:  '<path d="M8.4 11.2V5.7a1.6 1.6 0 0 1 3.2 0v5.5"/><path d="M11.6 10.6V4.7a1.6 1.6 0 0 1 3.2 0v5.9"/><path d="M14.8 11V6.7a1.6 1.6 0 0 1 3.2 0v8.1a5.9 5.9 0 0 1-5.9 5.9h-.9a4.9 4.9 0 0 1-3.9-2l-3-4a1.7 1.7 0 0 1 2.8-2l1.6 2"/>',
+    trophy:'<path d="M7 4h10v4.2A5 5 0 0 1 7 8.2z"/><path d="M7 5H4.4v1.6A3.4 3.4 0 0 0 8 10M17 5h2.6v1.6A3.4 3.4 0 0 1 16 10"/><path d="M12 13.2V16M8.6 20h6.8M9.6 16h4.8l.8 4H8.8z"/>'
+  };
+  function glyph(name) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (GLYPH[name] || GLYPH.star) + '</svg>';
+  }
+
+  /* ---------------- DOM ---------------- */
+  const rankBtn    = document.getElementById('rankBtn');
+  const rankMini   = document.getElementById('rankMini');
+  const rankNameEl = document.getElementById('rankName');
+  const rankStarsEl= document.getElementById('rankStars');
+  const achBtn     = document.getElementById('achBtn');
+  const achMini    = document.getElementById('achMini');
+  const settleEl   = document.getElementById('settle');
+  const stHead     = document.getElementById('stHead');
+  const stEmblem   = document.getElementById('stEmblem');
+  const stRank     = document.getElementById('stRank');
+  const stGain     = document.getElementById('stGain');
+  const stBar      = document.getElementById('stBar');
+  const stNote     = document.getElementById('stNote');
+  const stNext     = document.getElementById('stNext');
+  const stExit     = document.getElementById('stExit');
+  const rankPanel  = document.getElementById('rankPanel');
+  const rkBig      = document.getElementById('rkBig');
+  const rkTitle    = document.getElementById('rkTitle');
+  const rkSub      = document.getElementById('rkSub');
+  const rkBar      = document.getElementById('rkBar');
+  const rkStarTxt  = document.getElementById('rkStarTxt');
+  const rkStats    = document.getElementById('rkStats');
+  const rkHist     = document.getElementById('rkHist');
+  const rkPick     = document.getElementById('rkPick');
+  const achPanel   = document.getElementById('achPanel');
+  const achPts     = document.getElementById('achPts');
+  const achSub     = document.getElementById('achSub');
+  const achBar     = document.getElementById('achBar');
+  const achPct     = document.getElementById('achPct');
+  const achTabs    = document.getElementById('achTabs');
+  const achList    = document.getElementById('achList');
+  const achToastsEl= document.getElementById('achToasts');
+  const metaSeasonEl = document.getElementById('metaSeason');
+
+  /* ---------------- 赛季 / 档案 ---------------- */
+  function seasonNo() {
+    return Math.max(1, Math.floor((Date.now() - SEASON_EPOCH) / (SEASON_DAYS * 86400000)) + 1);
+  }
+
+  function defaultProfile() {
+    return {
+      v: 1,
+      rank: {
+        season: seasonNo(), ri: 0, tier: 3, stars: 0,
+        peak: { ri: 0, tier: 3, stars: 0 },
+        wins: 0, losses: 0, streak: 0, bestStreak: 0, hist: []
+      },
+      stats: {
+        games: 0, wins: 0, losses: 0,
+        wl: { beginner: { w: 0, l: 0 }, intermediate: { w: 0, l: 0 }, expert: { w: 0, l: 0 }, custom: { w: 0, l: 0 } },
+        streak: 0, bestStreak: 0,
+        revealed: 0, flags: 0, chords: 0, booms: 0,
+        noguessWins: 0, nightWins: 0, bigWins: 0, noFlagWins: 0, maxBlank: 0,
+        day: { d: '', n: 0 }, dailyMax: 0,
+        recent: [], totalSecs: 0, bestBvps: 0
+      },
+      ach: {},
+      daily: { last: '', streak: 0, best: 0, hist: {} },
+      campaign: { stars: [] }
+    };
+  }
+
+  function intOr(v, dft) {
+    const n = parseInt(v, 10);
+    return isNaN(n) ? dft : n;
+  }
+  function sanitizeRank(r) {
+    if (!r || typeof r !== 'object') return;
+    r.ri = Math.max(0, Math.min(LAST_RI, intOr(r.ri, 0)));
+    const ts = RANKS[r.ri].tierStars;
+    if (r.ri === LAST_RI) {
+      r.tier = 3;
+      r.stars = Math.max(0, Math.min(99999, intOr(r.stars, 0)));
+    } else {
+      r.tier = Math.max(1, Math.min(3, intOr(r.tier, 3)));
+      r.stars = Math.max(0, Math.min(ts, intOr(r.stars, 0)));
+    }
+    r.wins = Math.max(0, intOr(r.wins, 0));
+    r.losses = Math.max(0, intOr(r.losses, 0));
+    r.streak = Math.max(0, intOr(r.streak, 0));
+    r.bestStreak = Math.max(r.streak, Math.max(0, intOr(r.bestStreak, 0)));
+    r.season = Math.max(1, intOr(r.season, seasonNo()));
+  }
+
+  function loadProfile() {
+    let p = null;
+    try { p = JSON.parse(localStorage.getItem(PROFILE_KEY)); } catch (e) { p = null; }
+    const d = defaultProfile();
+    if (!p || typeof p !== 'object') return d;
+    p.rank = Object.assign(d.rank, p.rank || {});
+    p.rank.peak = Object.assign(d.rank.peak, (p.rank && p.rank.peak) || {});
+    p.rank.hist = Array.isArray(p.rank.hist) ? p.rank.hist.slice(0, 14) : [];
+    p.stats = Object.assign(d.stats, p.stats || {});
+    p.stats.wl = Object.assign(d.stats.wl, (p.stats && p.stats.wl) || {});
+    p.stats.day = Object.assign(d.stats.day, (p.stats && p.stats.day) || {});
+    p.ach = (p.ach && typeof p.ach === 'object') ? p.ach : {};
+    p.daily = Object.assign(d.daily, (p.daily && typeof p.daily === 'object') ? p.daily : {});
+    if (!p.daily.hist || typeof p.daily.hist !== 'object') p.daily.hist = {};
+    p.stats.recent = Array.isArray(p.stats.recent) ? p.stats.recent.slice(0, 30) : [];
+    p.stats.totalSecs = Math.max(0, intOr(p.stats.totalSecs, 0));
+    p.stats.bestBvps = Math.max(0, Number(p.stats.bestBvps) || 0);
+    p.campaign = Object.assign(d.campaign, (p.campaign && typeof p.campaign === 'object') ? p.campaign : {});
+    if (!Array.isArray(p.campaign.stars)) p.campaign.stars = [];
+    for (let i = 0; i < p.campaign.stars.length; i++) {
+      p.campaign.stars[i] = Math.max(0, Math.min(3, intOr(p.campaign.stars[i], 0)));
+    }
+    sanitizeRank(p.rank);
+    sanitizeRank(p.rank.peak);
+    return p;
+  }
+
+  let profile = loadProfile();
+  let ranked = false;
+  let rankedLevel = 'beginner';
+  let noGuessBeforeRank = noGuess;
+  let achFilter = 'all';
+
+  function saveProfile() {
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch (e) {}
+  }
+
+  function ensureSeason() {
+    const s = seasonNo();
+    if (profile.rank.season === s) return false;
+    profile.rank.season = s;
+    profile.rank.ri = Math.max(0, profile.rank.ri - 1);   // 赛季软重置：掉一个大段
+    profile.rank.tier = 3;
+    profile.rank.stars = 0;
+    profile.rank.streak = 0;
+    profile.rank.hist = [];
+    saveProfile();
+    return true;
+  }
+
+  /* ---------------- 星级阶梯 ---------------- */
+  function rankLabel(r) {
+    if (!r) return '—';
+    const R = RANKS[r.ri] || RANKS[0];
+    if (r.ri === LAST_RI) return R.name + ' ' + r.stars + '★';
+    return R.name + ' ' + (ROMAN[r.tier] || '');
+  }
+  function peakShort(x) {
+    if (!x) return '—';
+    const R = RANKS[x.ri] || RANKS[0];
+    if (x.ri === LAST_RI) return '王者 ' + x.stars + '★';
+    return R.short + ' ' + (ROMAN[x.tier] || '');
+  }
+  function rankScore(r) {
+    if (!r) return -1;
+    return r.ri * 1000000 + (3 - r.tier) * 10000 + Math.min(9999, r.stars);
+  }
+
+  function applyStars(r, n) {
+    const ev = { gain: 0, loss: 0, promote: 0, rankUp: 0, demote: 0, rankDown: 0, floor: 0 };
+    let k = Math.abs(n);
+    while (k-- > 0) {
+      if (n > 0) {
+        if (r.ri === LAST_RI) { r.stars++; ev.gain++; continue; }
+        r.stars++;
+        if (r.stars > RANKS[r.ri].tierStars) {
+          r.stars = 0;
+          if (r.tier > 1) { r.tier--; ev.promote++; }
+          else { r.ri++; r.tier = 3; ev.rankUp++; }
+        } else { ev.gain++; }
+      } else {
+        if (r.ri === LAST_RI) {
+          if (r.stars > 0) { r.stars--; ev.loss++; }
+          else { r.ri = LAST_RI - 1; r.tier = 1; r.stars = RANKS[r.ri].tierStars - 1; ev.rankDown++; }
+          continue;
+        }
+        if (r.stars > 0) { r.stars--; ev.loss++; }
+        else if (r.tier < 3) { r.tier++; r.stars = RANKS[r.ri].tierStars - 1; ev.demote++; }
+        else if (r.ri > 0) { r.ri--; r.tier = 1; r.stars = RANKS[r.ri].tierStars - 1; ev.rankDown++; }
+        else { r.stars = 0; ev.floor++; }
+      }
+    }
+    return ev;
+  }
+
+  function rankReward(win, lvl, isBest, streakAfter) {
+    const notes = [];
+    if (!win) return { delta: -1, notes: notes };
+    let delta = STAR_REWARD[lvl] || 1;
+    if (streakAfter >= 3) { delta += 1; notes.push('连胜 ' + streakAfter + ' · 额外 +1★'); }
+    if (isBest) { delta += 1; notes.push('破个人纪录 · 额外 +1★'); }
+    return { delta: Math.min(delta, 4), notes: notes };
+  }
+
+  /* ---------------- 成就定义 ---------------- */
+  const RARITY = {
+    copper: { name: '铜' }, silver: { name: '银' },
+    gold: { name: '金' }, plat: { name: '白金' }
+  };
+
+  function ach(id, name, desc, r, pts, icon, get, need, extra) {
+    return Object.assign({
+      id: id, name: name, desc: desc, r: r, pts: pts, icon: icon,
+      prog: function (s, ctx, p) {
+        const v = get(s, ctx, p);
+        const cur = typeof v === 'number' ? v : (v ? 1 : 0);
+        return [Math.max(0, Math.min(cur, need)), need];
+      },
+      check: function (s, ctx, p) {
+        const v = get(s, ctx, p);
+        return (typeof v === 'number' ? v : (v ? 1 : 0)) >= need;
+      }
+    }, extra || {});
+  }
+
+  const ACH = [
+    ach('first_win', '第一滴血', '赢下第一局扫雷', 'copper', 5, 'flag', function (s) { return s.wins; }, 1),
+    ach('games100', '常驻玩家', '累计完成 100 局', 'silver', 20, 'grid', function (s) { return s.games; }, 100),
+    ach('streak3', '手感来了', '达成 3 连胜', 'copper', 10, 'flame', function (s) { return s.bestStreak; }, 3),
+    ach('streak10', '十连霸主', '达成 10 连胜', 'gold', 30, 'flame', function (s) { return s.bestStreak; }, 10),
+    ach('streak20', '冷静如冰', '达成 20 连胜', 'plat', 60, 'crown', function (s) { return s.bestStreak; }, 20),
+    ach('b50', '初级专员', '初级累计 50 胜', 'silver', 15, 'medal', function (s) { return s.wl.beginner.w; }, 50),
+    ach('i25', '中级学者', '中级累计 25 胜', 'silver', 15, 'medal', function (s) { return s.wl.intermediate.w; }, 25),
+    ach('e10', '高级老兵', '高级累计 10 胜', 'gold', 25, 'medal', function (s) { return s.wl.expert.w; }, 10),
+    ach('speed10', '十秒真男人', '10 秒内通关初级', 'gold', 25, 'bolt',
+      function (s, c) { return (c.win && c.level === 'beginner' && c.secs <= 10) ? 1 : 0; }, 1),
+    ach('speed_exp', '极限扫雷', '3 分钟内通关高级', 'gold', 30, 'clock',
+      function (s, c) { return (c.win && c.level === 'expert' && c.secs <= 180) ? 1 : 0; }, 1),
+    ach('trio', '三项全能', '三档难度都留下最佳成绩', 'silver', 20, 'star',
+      function () { return (bests.beginner != null && bests.intermediate != null && bests.expert != null) ? 1 : 0; }, 1),
+    ach('ng10', '逻辑信徒', '无猜模式累计 10 胜', 'silver', 15, 'brain', function (s) { return s.noguessWins; }, 10),
+    ach('ng50', '纯粹理性', '无猜模式累计 50 胜', 'plat', 50, 'brain', function (s) { return s.noguessWins; }, 50),
+    ach('blank50', '开天窗', '单次翻开 50 格以上', 'silver', 15, 'grid', function (s) { return s.maxBlank; }, 50),
+    ach('blank120', '一马平川', '单次翻开 120 格以上', 'gold', 25, 'grid', function (s) { return s.maxBlank; }, 120),
+    ach('boom50', '铁头功', '累计踩雷 50 次', 'copper', 10, 'bomb', function (s) { return s.booms; }, 50),
+    ach('rev10k', '万人斩', '累计翻开 10000 格', 'silver', 20, 'grid', function (s) { return s.revealed; }, 10000),
+    ach('flag500', '旗帜鲜明', '累计插旗 500 面', 'copper', 10, 'flag', function (s) { return s.flags; }, 500),
+    ach('chord100', '连锁反应', '累计使用连开 100 次', 'silver', 15, 'bolt', function (s) { return s.chords; }, 100),
+    ach('big', '版图扩张', '在 30×30 以上的自定义棋盘获胜', 'gold', 25, 'grid', function (s) { return s.bigWins; }, 1),
+    ach('night', '深夜扫雷', '在凌晨 0–5 点通关', 'copper', 10, 'moon', function (s) { return s.nightWins; }, 1),
+    ach('noflag', '空手道', '不插任何旗通关（中级及以上）', 'gold', 30, 'hand', function (s) { return s.noFlagWins; }, 1),
+    ach('marathon', '扫雷狂人', '单日完成 30 局', 'gold', 25, 'bolt', function (s) { return s.dailyMax; }, 30),
+    ach('rank_gold', '黄金时代', '打上荣耀黄金', 'copper', 10, 'shield',
+      function (s, c, p) { return p.rank.ri >= 2 ? 1 : 0; }, 1),
+    ach('rank_star', '星耀之路', '打上至尊星耀', 'gold', 30, 'shield',
+      function (s, c, p) { return p.rank.ri >= 5 ? 1 : 0; }, 1),
+    ach('daily7', '每日一练', '每日挑战连续打卡 7 天', 'silver', 20, 'clock',
+      function (s, c, p) { return (p.daily && p.daily.streak) || 0; }, 7),
+    ach('daily30', '风雨无阻', '每日挑战连续打卡 30 天', 'gold', 40, 'clock',
+      function (s, c, p) { return (p.daily && p.daily.streak) || 0; }, 30),
+    ach('camp_first', '远征开始', '通关战役第一章任意一关', 'copper', 10, 'flag',
+      function (s, c, p) {
+        const st = (p.campaign && p.campaign.stars) || [];
+        for (let i = 0; i < Math.min(6, st.length); i++) if (st[i] > 0) return 1;
+        return 0;
+      }, 1),
+    ach('camp_60', '六十星芒', '战役累计获得 60 颗星', 'gold', 40, 'star',
+      function (s, c, p) {
+        const st = (p.campaign && p.campaign.stars) || [];
+        let n = 0;
+        for (let i = 0; i < st.length; i++) n += st[i] || 0;
+        return n;
+      }, 60),
+    ach('camp_all', '雷神降临', '通关战役全部 30 关', 'plat', 90, 'trophy',
+      function (s, c, p) {
+        const st = (p.campaign && p.campaign.stars) || [];
+        let n = 0;
+        for (let i = 0; i < 30; i++) if ((st[i] || 0) > 0) n++;
+        return n;
+      }, 30, { hidden: true }),
+    ach('rank_king', '巅峰王者', '打上最强王者', 'plat', 80, 'crown',
+      function (s, c, p) { return p.rank.ri >= LAST_RI ? 1 : 0; }, 1, { hidden: true })
+  ];
+  const ACH_MAX_PTS = ACH.reduce(function (a, b) { return a + b.pts; }, 0);
+
+  function dateKey() {
+    const d = new Date();
+    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  }
+  function fmtDate(ts) {
+    const d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function checkAchievements(ctx) {
+    const fresh = [];
+    for (let i = 0; i < ACH.length; i++) {
+      const a = ACH[i];
+      if (profile.ach[a.id]) continue;
+      let ok = false;
+      try { ok = a.check(profile.stats, ctx || {}, profile); } catch (e) { ok = false; }
+      if (ok) { profile.ach[a.id] = Date.now(); fresh.push(a); }
+    }
+    if (fresh.length) {
+      saveProfile();
+      fresh.forEach(function (a, i) {
+        setTimeout(function () { popAchToast(a); }, 480 + i * 760);
+      });
+    }
+    return fresh;
+  }
+
+  function popAchToast(a) {
+    const el = document.createElement('div');
+    el.className = 'ach-toast ' + ('q-' + a.r);
+    el.innerHTML =
+      '<span class="at-ico">' + glyph(a.icon) + '</span>' +
+      '<span class="at-body"><span class="at-kicker">成就解锁</span>' +
+      '<div class="at-name">' + a.name + '</div></span>' +
+      '<span class="at-pts">+' + a.pts + '</span>';
+    achToastsEl.appendChild(el);
+    sfx('ach');
+    setTimeout(function () { el.classList.add('in'); }, 20);
+    setTimeout(function () {
+      el.classList.remove('in');
+      setTimeout(function () {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 420);
+    }, 3800);
+  }
+
+  /* ---------------- 工具栏显示 ---------------- */
+  function updateRankChip() {
+    const r = profile.rank;
+    const R = RANKS[r.ri] || RANKS[0];
+    rankMini.className = 'rk-emblem sm r-' + R.key;
+    rankMini.innerHTML = EMBLEM_SVG;
+    rankNameEl.textContent = R.short + (r.ri === LAST_RI ? '' : ' ' + (ROMAN[r.tier] || ''));
+    rankStarsEl.textContent = r.stars + ' ★';
+    metaSeasonEl.textContent = 'S' + r.season + ' 赛季' + (ranked ? ' · 排位中' : '');
+    rankBtn.classList.toggle('ranked-on', ranked);
+  }
+  function updateAchChip() {
+    const got = ACH.filter(function (a) { return profile.ach[a.id]; }).length;
+    achMini.textContent = got + ' / ' + ACH.length;
+  }
+
+  /* ---------------- 排位面板 ---------------- */
+  function renderRankPanel() {
+    ensureSeason();
+    const r = profile.rank;
+    const R = RANKS[r.ri] || RANKS[0];
+    const king = r.ri === LAST_RI;
+    rkBig.className = 'rk-emblem r-' + R.key;
+    rkBig.innerHTML = EMBLEM_SVG;
+    rkTitle.textContent = rankLabel(r);
+    rkBar.style.width = (king ? 100 : Math.round(r.stars / R.tierStars * 100)) + '%';
+    rkStarTxt.textContent = king ? r.stars + ' ★' : r.stars + ' / ' + R.tierStars + ' ★';
+    const games = r.wins + r.losses;
+    rkSub.textContent = 'S' + r.season + ' 赛季 · ' +
+      (games ? '胜率 ' + Math.round(r.wins / games * 100) + '% · ' + games + ' 场' : '还没打过排位');
+
+    const cells = [
+      ['排位场次', games],
+      ['当前连胜', r.streak],
+      ['最佳连胜', r.bestStreak],
+      ['最高段位', peakShort(r.peak)]
+    ];
+    rkStats.innerHTML = cells.map(function (c) {
+      return '<div class="rs-item"><b>' + c[1] + '</b><span>' + c[0] + '</span></div>';
+    }).join('');
+
+    if (!r.hist.length) {
+      rkHist.innerHTML = '<span class="rh-label" style="opacity:.65">还没有记录</span>';
+    } else {
+      rkHist.innerHTML = r.hist.slice(0, 12).map(function (h) {
+        const lv = LEVELS[h.lv] ? (h.lv === 'beginner' ? '初级' : h.lv === 'intermediate' ? '中级' : '高级') : '';
+        return '<span class="rh-dot ' + (h.w ? 'w' : 'l') + '" title="' + (h.w ? '胜' : '负') + ' · ' + lv + '"></span>';
+      }).join('');
+    }
+
+    const lvSel = ['beginner', 'intermediate', 'expert'];
+    if (lvSel.indexOf(rankedLevel) < 0) rankedLevel = 'beginner';
+    rkPick.innerHTML = ['beginner', 'intermediate', 'expert'].map(function (k) {
+      const nm = k === 'beginner' ? '初级' : k === 'intermediate' ? '中级' : '高级';
+      return '<button class="pick' + (k === rankedLevel ? ' active' : '') + '" data-lv="' + k + '">' +
+        '<b>' + nm + '</b><i>胜 +' + STAR_REWARD[k] + '★</i></button>';
+    }).join('');
+  }
+
+  function openRankPanel() {
+    ensureSeason();
+    closePanels();
+    renderRankPanel();
+    rankPanel.hidden = false;
+  }
+  function closePanels() {
+    rankPanel.hidden = true;
+    achPanel.hidden = true;
+    campPanel.hidden = true;
+    statsPanel.hidden = true;
+    dailyPanel.hidden = true;
+  }
+
+  /* ---------------- 成就面板 ---------------- */
+  function renderAchPanel() {
+    const got = ACH.filter(function (a) { return profile.ach[a.id]; });
+    const pts = got.reduce(function (s, a) { return s + a.pts; }, 0);
+    achPts.textContent = pts;
+    achSub.textContent = '已解锁 ' + got.length + ' / ' + ACH.length + ' · 共 ' + ACH_MAX_PTS + ' 点';
+    const pct = ACH_MAX_PTS ? Math.round(pts / ACH_MAX_PTS * 100) : 0;
+    achBar.style.width = pct + '%';
+    achPct.textContent = pct + '%';
+
+    const list = ACH.filter(function (a) {
+      const un = !!profile.ach[a.id];
+      if (achFilter === 'unlocked') return un;
+      if (achFilter === 'locked') return !un;
+      return true;
+    });
+
+    if (!list.length) {
+      achList.innerHTML = '<div style="text-align:center;color:var(--text-3);font-size:12px;padding:26px 0">这一类还没有成就</div>';
+      return;
+    }
+
+    achList.innerHTML = list.map(function (a) {
+      const un = !!profile.ach[a.id];
+      const hidden = a.hidden && !un;
+      const pr = a.prog(profile.stats, {}, profile);
+      const cur = pr[0], max = pr[1];
+      const ppt = Math.max(0, Math.min(100, Math.round(cur / max * 100)));
+      const nm = hidden ? '???' : a.name;
+      const ds = hidden ? '隐藏成就 · 解锁后揭晓' : a.desc;
+      let meta = RARITY[a.r].name + '级 · ' + a.pts + ' 点';
+      if (un) meta += ' · ' + fmtDate(profile.ach[a.id]) + ' 解锁';
+      else if (!hidden && max > 1) meta += ' · ' + cur + ' / ' + max;
+      return '<div class="ach-item q-' + a.r + ' ' + (un ? 'unlocked' : 'locked') + '">' +
+        '<span class="ach-ico">' + glyph(hidden ? 'star' : a.icon) + '</span>' +
+        '<div class="ach-body">' +
+          '<div class="ach-name">' + nm + '<span class="pts">+' + a.pts + '</span></div>' +
+          '<div class="ach-desc">' + ds + '</div>' +
+          '<div class="ach-prog"><i style="width:' + (un ? 100 : ppt) + '%"></i></div>' +
+          '<div class="ach-meta">' + meta + '</div>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function openAchPanel() {
+    closePanels();
+    renderAchPanel();
+    achPanel.hidden = false;
+  }
+
+  /* ---------------- 排位结算 ---------------- */
+  function showSettle(win, res, ev) {
+    const r = profile.rank;
+    const R = RANKS[r.ri] || RANKS[0];
+    stHead.textContent = win ? '排位胜利' : '排位失败';
+    stHead.classList.toggle('lose', !win);
+    stEmblem.innerHTML = '<span class="rk-emblem r-' + R.key + '">' + EMBLEM_SVG + '</span>';
+    stRank.textContent = rankLabel(r);
+    // 青铜保底时不掉星，就别显示 -1★ 自相矛盾
+    const delta = ev.floor ? 0 : res.delta;
+    stGain.className = 'st-gain ' + (delta > 0 ? 'up' : (delta < 0 ? 'down' : 'flat'));
+    stGain.textContent = (delta > 0 ? '+' : '') + delta + ' ★';
+    stBar.style.width = (r.ri === LAST_RI ? 100 : Math.round(r.stars / R.tierStars * 100)) + '%';
+
+    let note = res.notes.join(' · ');
+    if (ev.rankUp) note = '升段！' + rankLabel(r) + (note ? ' · ' + note : '');
+    else if (ev.promote) note = '晋级 ' + rankLabel(r) + (note ? ' · ' + note : '');
+    else if (ev.rankDown) note = '掉段至 ' + rankLabel(r) + (note ? ' · ' + note : '');
+    else if (ev.demote) note = '掉至 ' + rankLabel(r) + (note ? ' · ' + note : '');
+    else if (ev.floor) note = '青铜保护 · 未掉星';
+    stNote.textContent = note || (win ? '稳住节奏，继续上分' : '下局赢回来');
+    const bv = (G && G.bv) || 0;
+    const secs = (lastResult && lastResult.secs) || 0;
+    stMeta.innerHTML = '3BV <b>' + bv + '</b> · 效率 <b>' +
+      (secs >= 1 ? (bv / secs).toFixed(2) : '—') + '</b> 格/秒';
+    settleEl.hidden = false;
+  }
+  function hideSettle() { settleEl.hidden = true; }
+
+  /* ---------------- 排位模式进出 ---------------- */
+  function startRankedMatch(lv) {
+    if (lv) rankedLevel = lv;
+    // 先清掉其它特殊模式：否则战役的限时 / 统计桶会污染排位局
+    leaveRanked();
+    leaveDaily();
+    leaveCampaign();
+    noGuessBeforeRank = noGuess;
+    ranked = true;
+    level = rankedLevel;
+    noGuess = true;
+    closePanels();
+    hideSettle();
+    newGame();
+    updateRankChip();
+  }
+  function leaveRanked() {
+    if (!ranked) return;
+    ranked = false;
+    noGuess = noGuessBeforeRank;
+    ngToggle.disabled = dailyMode || campaignMode;
+    hideSettle();
+    updateRankChip();
+  }
+
+  /* ---------------- 结算入口 ---------------- */
+  function finishGame(win, secs, isBest, reason) {
+    const perf = G.perf || { maxBlank: 0, chords: 0, flags: 0 };
+    const s = profile.stats;
+
+    s.games++;
+    if (win) s.wins++; else s.losses++;
+    const sk = statLvOf(level);
+    const bucket = s.wl[sk] || (s.wl[sk] = { w: 0, l: 0 });
+    if (win) bucket.w++; else bucket.l++;
+    if (win) { s.streak++; if (s.streak > s.bestStreak) s.bestStreak = s.streak; }
+    else { s.streak = 0; if (reason !== 'timeout') s.booms++; }   // 超时不算踩雷
+    s.revealed += G.revealed;
+    s.flags += perf.flags;
+    s.chords += perf.chords;
+    if (perf.maxBlank > s.maxBlank) s.maxBlank = perf.maxBlank;
+
+    if (win) {
+      if (noGuess) s.noguessWins++;
+      // 只统计真正一旗未插的标准难度：战役关（尤其禁旗关）与自定义小盘不算
+      if (perf.flags === 0 && (level === 'intermediate' || level === 'expert') && !campaignMode) {
+        s.noFlagWins++;
+      }
+      const c = cfg();
+      if (level === 'custom' && !campaignMode && c.rows >= 30 && c.cols >= 30) s.bigWins++;
+      const h = new Date().getHours();
+      if (h >= 0 && h < 5) s.nightWins++;
+    }
+    const today = dateKey();
+    if (s.day.d !== today) { s.day.d = today; s.day.n = 0; }
+    s.day.n++;
+    if (s.day.n > s.dailyMax) s.dailyMax = s.day.n;
+
+    pushRecentStat(win, sk, secs);
+    if (campaignMode && win) recordCampaign(campaignIdx, lastCampStars);
+
+    if (ranked) {
+      settleRanked(win, isBest);
+      if (modeNote) modeNote.textContent = '排位赛 · ' + rankLabel(profile.rank) + ' · 强制无猜';
+    }
+    saveProfile();
+
+    checkAchievements({ win: win, level: sk, secs: secs, isBest: isBest });
+    updateAchChip();
+    updateRankChip();
+    updateHintBtn();
+    updateCampMini();
+  }
+
+  function settleRanked(win, isBest) {
+    ensureSeason();          // 跨赛季时先软重置，再结算本局
+    const r = profile.rank;
+    const streakAfter = win ? r.streak + 1 : 0;
+    const res = rankReward(win, level, isBest, streakAfter);
+    const ev = applyStars(r, res.delta);
+    r.streak = streakAfter;
+    if (r.streak > r.bestStreak) r.bestStreak = r.streak;
+    if (win) r.wins++; else r.losses++;
+    if (rankScore(r) > rankScore(r.peak)) r.peak = { ri: r.ri, tier: r.tier, stars: r.stars };
+    r.hist.unshift({ w: win ? 1 : 0, lv: level });
+    if (r.hist.length > 14) r.hist.length = 14;
+    saveProfile();
+    showSettle(win, res, ev);
+    if (res.delta !== 0) sfx('star');
+    return res;
+  }
+
+  /* ---------------- 事件 ---------------- */
+  document.getElementById('rankClose').addEventListener('click', function () { rankPanel.hidden = true; });
+  document.getElementById('achClose').addEventListener('click', function () { achPanel.hidden = true; });
+  rankPanel.addEventListener('click', function (e) { if (e.target === rankPanel) rankPanel.hidden = true; });
+  achPanel.addEventListener('click', function (e) { if (e.target === achPanel) achPanel.hidden = true; });
+
+  rkPick.addEventListener('click', function (e) {
+    const b = e.target.closest ? e.target.closest('.pick') : null;
+    if (!b) return;
+    rankedLevel = b.dataset.lv;
+    renderRankPanel();
+  });
+  document.getElementById('rkStart').addEventListener('click', function () { startRankedMatch(rankedLevel); });
+  stNext.addEventListener('click', function () { startRankedMatch(level); });
+  stExit.addEventListener('click', function () { leaveRanked(); hideSettle(); newGame(); });
+
+  achTabs.addEventListener('click', function (e) {
+    const b = e.target.closest ? e.target.closest('button') : null;
+    if (!b || !b.dataset.f) return;
+    achFilter = b.dataset.f;
+    Array.prototype.forEach.call(achTabs.children, function (x) {
+      x.classList.toggle('active', x === b);
+    });
+    renderAchPanel();
+  });
+
+  /* =========================================================
+     扩展模块：每日挑战 / 提示 / 音效 / 主题 / 3BV / 键盘光标 / 分享
+     ========================================================= */
+
+  const THEME_KEY = 'win11.minesweeper.theme.v1';
+  const SOUND_KEY = 'win11.minesweeper.sound.v1';
+  const HINT_MAX  = 3;
+
+  const dailyBtn   = document.getElementById('dailyBtn');
+  const dailyMini  = document.getElementById('dailyMini');
+  const dailyPanel = document.getElementById('dailyPanel');
+  const dailyCal   = document.getElementById('dailyCal');
+  const dailyStats = document.getElementById('dailyStats');
+  const dhDay      = document.getElementById('dhDay');
+  const dhStreak   = document.getElementById('dhStreak');
+  const dailyNote  = document.getElementById('dailyNote');
+  const hintBtn    = document.getElementById('hintBtn');
+  const soundBtn   = document.getElementById('soundBtn');
+  const themeBtn   = document.getElementById('themeBtn');
+  const stMeta     = document.getElementById('stMeta');
+  const stShare    = document.getElementById('stShare');
+  const toastShare = document.getElementById('toastShare');
+
+  let dailyMode  = false;
+  let dailyStamp = 0;
+  let hintsLeft  = HINT_MAX;
+  let cursorIdx  = -1;
+  let lastResult = null;
+  let noGuessBeforeDaily = false;
+  let noteTimer  = null;
+  let noteBackup = '';
+
+  /* ---------------- 日期 / 随机源 ---------------- */
+  function stampOf(d) {
+    return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  }
+  function keyOfStamp(s) {
+    const y = Math.floor(s / 10000), m = Math.floor(s / 100) % 100, d = s % 100;
+    return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  }
+  function todayStamp() { return stampOf(new Date()); }
+  function yesterdayStamp() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return stampOf(d);
+  }
+  function dailySeed(s) {
+    let h = 2166136261 ^ s;
+    h = Math.imul(h ^ (h >>> 13), 16777619);
+    h = Math.imul(h ^ (h >>> 11), 2654435761);
+    h ^= h >>> 15;
+    return (h >>> 0) || 1;
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ---------------- 每日棋盘：种子固定，首点 3×3 安全用对调实现 ---------------- */
+  function placeMinesDaily(safeIdx) {
+    clearMines();
+    const rows = G.rows, cols = G.cols, n = rows * cols;
+    const rng = mulberry32(dailySeed(dailyStamp));
+    const pool = [];
+    for (let i = 0; i < n; i++) pool.push(i);
+    const count = Math.min(G.mines, n);
+    for (let i = 0; i < count; i++) {
+      const j = i + Math.floor(rng() * (pool.length - i));
+      const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+      G.cells[pool[i]].mine = true;
+    }
+    G.mines = count;
+
+    const sr = Math.floor(safeIdx / cols), sc = safeIdx % cols;
+    const forbidden = new Set();
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const r = sr + dr, c = sc + dc;
+        if (r >= 0 && r < rows && c >= 0 && c < cols) forbidden.add(r * cols + c);
+      }
+    }
+    let scan = n - 1;
+    forbidden.forEach(function (idx) {
+      if (!G.cells[idx].mine) return;
+      while (scan >= 0 && (forbidden.has(scan) || G.cells[scan].mine)) scan--;
+      if (scan < 0) return;
+      G.cells[idx].mine = false;
+      G.cells[scan].mine = true;
+      scan--;
+    });
+
+    for (let i = 0; i < n; i++) {
+      if (G.cells[i].mine) continue;
+      let a = 0;
+      for (const nb of G.nn[i]) if (G.cells[nb].mine) a++;
+      G.cells[i].adj = a;
+    }
+  }
+
+  /* ---------------- 3BV（最少点击数的标准指标） ---------------- */
+  /* 3BV = 空区域数量 + 不邻接任何空区域的数字格数量。
+     空区域泛洪时会把周围数字格一并标记 seen，所以这里必须排除 seen。 */
+  function compute3BV() {
+    const n = G.rows * G.cols;
+    const seen = new Uint8Array(n);
+    let bv = 0;
+    for (let i = 0; i < n; i++) {
+      const c = G.cells[i];
+      if (c.mine || c.adj !== 0 || seen[i]) continue;
+      bv++;
+      seen[i] = 1;
+      const st = [i];
+      while (st.length) {
+        const k = st.pop();
+        for (const nb of G.nn[k]) {
+          const nc = G.cells[nb];
+          if (nc.mine || seen[nb]) continue;
+          seen[nb] = 1;
+          if (nc.adj === 0) st.push(nb);
+        }
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const c = G.cells[i];
+      if (!c.mine && c.adj > 0 && !seen[i]) bv++;
+    }
+    return bv;
+  }
+
+  /* ---------------- 页脚临时提示 ---------------- */
+  function flashNote(text) {
+    if (noteTimer) {
+      clearTimeout(noteTimer);          // 连续提示时保留最初的底稿，别把上一条提示当底稿
+      noteTimer = null;
+    } else {
+      noteBackup = modeNote.textContent;
+    }
+    modeNote.classList.remove('warn');
+    modeNote.textContent = text;
+    noteTimer = setTimeout(function () {
+      noteTimer = null;
+      modeNote.textContent = noteBackup;
+    }, 3200);
+  }
+
+  /* ---------------- 提示 ---------------- */
+  function resetHints() {
+    hintsLeft = HINT_MAX;
+    updateHintBtn();
+  }
+  function updateHintBtn() {
+    const usable = !!G && G.started && !G.over && !G.generating && !ranked && hintsLeft > 0;
+    hintBtn.disabled = !usable;
+    hintBtn.title = ranked
+      ? '排位赛不能使用提示'
+      : (hintsLeft > 0 ? '提示：高亮一个可确定的格子（剩 ' + hintsLeft + ' 次，H）' : '本局提示已用完');
+  }
+  function findHint() {
+    const n = G.rows * G.cols;
+    const revealed = new Uint8Array(n);
+    const flagged = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      if (G.cells[i].open) revealed[i] = 1;
+      if (G.cells[i].flag) flagged[i] = 1;
+    }
+    const res = solveOnce(buildAdj(), revealed, flagged, G.mines, G.nn, G.rows, G.cols);
+    if (!res || res.aborted) return { aborted: true, idx: -1 };
+    if (res.sure.length) return { idx: res.sure[0], isMine: true };
+    if (res.safe.length) return { idx: res.safe[0], isMine: false };
+    return { idx: -1 };
+  }
+  function giveHint() {
+    if (!G || !G.started || G.over || G.generating || ranked || hintsLeft <= 0) return;
+    const h = findHint();
+    if (h.aborted) { flashNote('提示计算超时，稍后再试'); return; }
+    if (h.idx < 0) {
+      flashNote('当前局面没有能确定推理的格子，只能猜了');
+      sfx('nope');
+      return;
+    }
+    hintsLeft--;
+    updateHintBtn();
+    const el = els[h.idx];
+    if (el) {
+      el.classList.add(h.isMine ? 'hint-sure' : 'hintmark');
+      setTimeout(function () { if (el) el.classList.remove('hint-sure', 'hintmark'); }, 2200);
+    }
+    const r = Math.floor(h.idx / G.cols) + 1, c = h.idx % G.cols + 1;
+    flashNote(h.isMine ? '提示：第 ' + r + ' 行 ' + c + ' 列一定是雷' : '提示：第 ' + r + ' 行 ' + c + ' 列是安全的');
+    sfx('tick');
+  }
+
+  /* ---------------- 音效（Web Audio 合成，无外部资源） ---------------- */
+  let soundOn = true;
+  try { soundOn = localStorage.getItem(SOUND_KEY) !== '0'; } catch (e) { soundOn = true; }
+  let actx = null;
+
+  function audioCtx() {
+    if (!soundOn) return null;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!actx) { try { actx = new AC(); } catch (e) { return null; } }
+    if (actx.state === 'suspended' && actx.resume) { try { actx.resume(); } catch (e) {} }
+    return actx;
+  }
+  function tone(o) {
+    const ctx = audioCtx();
+    if (!ctx) return;
+    const t0 = ctx.currentTime + (o.at || 0);
+    try {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = o.type || 'sine';
+      osc.frequency.setValueAtTime(o.f, t0);
+      if (o.f2) osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + o.d);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(o.g, t0 + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.d);
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(t0); osc.stop(t0 + o.d + 0.03);
+    } catch (e) {}
+  }
+  function noiseBurst(dur, gain, f0, f1) {
+    const ctx = audioCtx();
+    if (!ctx) return;
+    try {
+      const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const flt = ctx.createBiquadFilter();
+      flt.type = 'lowpass';
+      flt.frequency.setValueAtTime(f0, ctx.currentTime);
+      flt.frequency.exponentialRampToValueAtTime(f1, ctx.currentTime + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(gain, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+      src.connect(flt); flt.connect(g); g.connect(ctx.destination);
+      src.start();
+    } catch (e) {}
+  }
+  let lastOpenSfx = 0;
+  function sfx(name) {
+    if (!soundOn) return;
+    if (name === 'open' || name === 'spread') {
+      const now = performance.now();
+      if (now - lastOpenSfx < 30) return;
+      lastOpenSfx = now;
+    }
+    if (name === 'open') tone({ f: 660, f2: 990, d: 0.05, type: 'triangle', g: 0.03 });
+    else if (name === 'spread') tone({ f: 420, f2: 720, d: 0.09, type: 'triangle', g: 0.028 });
+    else if (name === 'flag') tone({ f: 340, f2: 250, d: 0.06, type: 'square', g: 0.026 });
+    else if (name === 'unflag') tone({ f: 250, f2: 330, d: 0.05, type: 'square', g: 0.022 });
+    else if (name === 'nope') tone({ f: 190, f2: 130, d: 0.13, type: 'sawtooth', g: 0.024 });
+    else if (name === 'tick') tone({ f: 620, d: 0.035, type: 'sine', g: 0.018 });
+    else if (name === 'boom') { noiseBurst(0.55, 0.15, 1100, 80); tone({ f: 130, f2: 38, d: 0.55, type: 'sine', g: 0.11 }); }
+    else if (name === 'win') { [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) { tone({ f: f, d: 0.24, type: 'sine', g: 0.055, at: i * 0.085 }); }); }
+    else if (name === 'lose') { [392, 330, 262].forEach(function (f, i) { tone({ f: f, d: 0.28, type: 'sine', g: 0.045, at: i * 0.1 }); }); }
+    else if (name === 'ach') { [880, 1174.66, 1567.98].forEach(function (f, i) { tone({ f: f, d: 0.3, type: 'sine', g: 0.04, at: i * 0.07 }); }); }
+    else if (name === 'star') { [659.25, 880, 1046.5].forEach(function (f, i) { tone({ f: f, d: 0.22, type: 'triangle', g: 0.04, at: i * 0.075 }); }); }
+  }
+  function setSound(on, silent) {
+    soundOn = on;
+    try { localStorage.setItem(SOUND_KEY, on ? '1' : '0'); } catch (e) {}
+    soundBtn.classList.toggle('off', !on);
+    soundBtn.title = on ? '音效已开（S 关闭）' : '音效已关（S 开启）';
+    if (on && !silent) sfx('tick');
+  }
+
+  /* ---------------- 主题 ---------------- */
+  function applyTheme(t) {
+    const dark = t === 'dark';
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    themeBtn.classList.toggle('off', !dark);
+    themeBtn.title = dark ? '切换浅色主题（T）' : '切换深色主题（T）';
+  }
+  function loadTheme() {
+    let t = '';
+    try { t = localStorage.getItem(THEME_KEY) || ''; } catch (e) {}
+    if (t !== 'dark' && t !== 'light') {
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    applyTheme(t);
+  }
+  function toggleTheme() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    applyTheme(dark ? 'light' : 'dark');
+    try { localStorage.setItem(THEME_KEY, dark ? 'light' : 'dark'); } catch (e) {}
+    sfx('tick');
+  }
+
+  /* =========================================================
+     战役模式 / 数据统计 / 无障碍配色
+     ========================================================= */
+
+  /* ---------------- 战役数据 ---------------- */
+  const CAMPAIGN = [
+    { title: '第一章 · 新兵训练', sub: '9×9 入门', lvs: [
+      { name: '初次上阵', rows: 9,  cols: 9,  mines: 10, time: 36 },
+      { name: '小心翼翼', rows: 9,  cols: 9,  mines: 10, time: 28 },
+      { name: '不许插旗', rows: 9,  cols: 9,  mines: 10, time: 44, noflag: true },
+      { name: '紧凑雷区', rows: 9,  cols: 9,  mines: 13, time: 40 },
+      { name: '眼疾手快', rows: 9,  cols: 9,  mines: 10, time: 20 },
+      { name: '新兵考核', rows: 9,  cols: 9,  mines: 13, time: 34, noflag: true }
+    ]},
+    { title: '第二章 · 战地推演', sub: '10×10 ~ 12×12', lvs: [
+      { name: '双线作战', rows: 10, cols: 10, mines: 16, time: 56 },
+      { name: '稳步推进', rows: 12, cols: 12, mines: 24, time: 96 },
+      { name: '静默行动', rows: 12, cols: 12, mines: 24, time: 88, noflag: true },
+      { name: '快速反应', rows: 10, cols: 10, mines: 18, time: 42, timed: true },
+      { name: '精准排雷', rows: 12, cols: 12, mines: 28, time: 110 },
+      { name: '章末考核', rows: 12, cols: 12, mines: 30, time: 92, timed: true }
+    ]},
+    { title: '第三章 · 铁血磨砺', sub: '16×16 标准', lvs: [
+      { name: '全面展开', rows: 16, cols: 16, mines: 40, time: 170 },
+      { name: '无旗挑战', rows: 16, cols: 16, mines: 40, time: 195, noflag: true },
+      { name: '限时突袭', rows: 16, cols: 16, mines: 40, time: 88, timed: true },
+      { name: '雷雨交加', rows: 16, cols: 16, mines: 55, time: 215 },
+      { name: '逻辑铁律', rows: 16, cols: 16, mines: 40, time: 175, noguess: true },
+      { name: '铁血终考', rows: 16, cols: 16, mines: 50, time: 155, noflag: true }
+    ]},
+    { title: '第四章 · 专家领域', sub: '16×30 大型棋盘', lvs: [
+      { name: '大场面',   rows: 16, cols: 30, mines: 99, time: 350 },
+      { name: '精算师',   rows: 16, cols: 30, mines: 99, time: 320, noguess: true },
+      { name: '单刀直入', rows: 16, cols: 30, mines: 99, time: 370, noflag: true },
+      { name: '争分夺秒', rows: 16, cols: 24, mines: 70, time: 165, timed: true },
+      { name: '千锤百炼', rows: 16, cols: 30, mines: 99, time: 275 },
+      { name: '专家终考', rows: 16, cols: 30, mines: 99, time: 255, noguess: true }
+    ]},
+    { title: '第五章 · 传奇之路', sub: '极限规格', lvs: [
+      { name: '极限压制', rows: 20, cols: 20, mines: 80,  time: 250 },
+      { name: '深海暗雷', rows: 12, cols: 30, mines: 110, time: 340 },
+      { name: '孤注一掷', rows: 16, cols: 16, mines: 60,  time: 135, timed: true },
+      { name: '大漠孤烟', rows: 30, cols: 30, mines: 180, time: 760 },
+      { name: '无相之境', rows: 16, cols: 30, mines: 99,  time: 290, noguess: true },
+      { name: '终章·雷神', rows: 30, cols: 30, mines: 220, time: 860, noguess: true }
+    ]}
+  ];
+
+  const LV_FLAT = [];
+  CAMPAIGN.forEach(function (ch, ci) {
+    ch.lvs.forEach(function (lv) {
+      lv.id = LV_FLAT.length;
+      lv.ch = ci;
+      LV_FLAT.push(lv);
+    });
+  });
+  const LV_TOTAL = LV_FLAT.length;
+  const LV_PER_CH = 6;
+
+  const campBtn    = document.getElementById('campBtn');
+  const campMini   = document.getElementById('campMini');
+  const campPanel  = document.getElementById('campPanel');
+  const campList   = document.getElementById('campList');
+  const campSub    = document.getElementById('campSub');
+  const campBarEl  = document.getElementById('campBar');
+  const campPct    = document.getElementById('campPct');
+  const lvlSettle  = document.getElementById('lvlSettle');
+  const lsKicker   = document.getElementById('lsKicker');
+  const lsTitle    = document.getElementById('lsTitle');
+  const lsStars    = document.getElementById('lsStars');
+  const lsSub      = document.getElementById('lsSub');
+
+  const statsBtn   = document.getElementById('statsBtn');
+  const statsPanel = document.getElementById('statsPanel');
+  const statBig    = document.getElementById('statBig');
+  const statChart  = document.getElementById('statChart');
+  const statWr     = document.getElementById('statWr');
+  const statBest   = document.getElementById('statBest');
+  const statSet    = document.getElementById('statSet');
+  const statSubEl  = document.getElementById('statSub');
+
+  const NUMS_KEY = 'win11.minesweeper.numstyle.v1';
+  const LV_COLOR = {
+    beginner: '#4f9fe8', intermediate: '#3aa06a', expert: '#8b6ee0',
+    custom: '#d99b3c', campaign: '#e0724f'
+  };
+  const LV_LABEL = { beginner: '初级', intermediate: '中级', expert: '高级', custom: '自定义', campaign: '战役' };
+
+  let campaignMode  = false;
+  let campaignIdx   = -1;
+  let customBackup  = null;
+  let noGuessBeforeCamp = false;
+  let lastCampStars = 0;
+  let lsToken = 0;
+  let numStyle = 'classic';
+
+  /* ---------------- 战役：进度 ---------------- */
+  function campStarsArr() {
+    const st = profile.campaign.stars;
+    while (st.length < LV_TOTAL) st.push(0);
+    return st;
+  }
+  function campTotalStars() {
+    return campStarsArr().reduce(function (a, b) { return a + b; }, 0);
+  }
+  function campClearedCount() {
+    return campStarsArr().filter(function (s) { return s > 0; }).length;
+  }
+  function campUnlocked(i) {
+    if (i <= 0) return true;
+    return (campStarsArr()[i - 1] || 0) > 0;
+  }
+  function starsFor(lv, secs) {
+    if (secs <= lv.time) return 3;
+    if (secs <= lv.time * 1.5) return 2;
+    return 1;
+  }
+  function levelLimit(lv) {
+    return Math.round(lv.time * (lv.timed ? 1.35 : 2.6));
+  }
+  function recordCampaign(i, s) {
+    const st = campStarsArr();
+    if (s > (st[i] || 0)) {
+      st[i] = s;
+      saveProfile();
+    }
+    updateCampMini();
+  }
+  function statLvOf(lv) {
+    return campaignMode ? 'campaign' : lv;
+  }
+
+  /* ---------------- 战役：工具栏 ---------------- */
+  function updateCampMini() {
+    if (!campMini) return;
+    const stars = campTotalStars();
+    const done = campClearedCount();
+    campMini.textContent = stars + ' / ' + (LV_TOTAL * 3) + ' ★';
+    if (campBtn) campBtn.title = '战役关卡 (C) · 已通关 ' + done + ' / ' + LV_TOTAL;
+  }
+
+  /* ---------------- 战役：面板 ---------------- */
+  function renderCampPanel() {
+    const st = campStarsArr();
+    let gi = 0;
+    let html = '';
+    CAMPAIGN.forEach(function (ch) {
+      let chStars = 0, chDone = 0;
+      ch.lvs.forEach(function () {
+        const s = st[gi++] || 0;
+        chStars += s;
+        if (s > 0) chDone++;
+      });
+      html += '<div class="camp-chap"><div class="camp-head"><b>' + ch.title + '</b><span>' +
+        ch.sub + '</span><i>' + chDone + '/' + LV_PER_CH + ' · ' + chStars + '★</i></div><div class="camp-grid">';
+      for (let k = 0; k < ch.lvs.length; k++) {
+        const i = ch.lvs[k].id;
+        const lv = LV_FLAT[i];
+        const s = st[i] || 0;
+        const open = campUnlocked(i);
+        const cur = open && s === 0;
+        let stars = '';
+        for (let q = 0; q < 3; q++) stars += q < s ? '<s>★</s>' : '★';
+        let tag = '';
+        if (open) {
+          if (lv.timed) tag = '<span class="lv-tag hard">限时</span>';
+          else if (lv.noflag) tag = '<span class="lv-tag hard">禁旗</span>';
+          else if (lv.noguess) tag = '<span class="lv-tag">无猜</span>';
+        }
+        html += '<button class="lv-card' + (s > 0 ? ' done' : '') + (cur ? ' cur' : '') +
+          (open ? '' : ' locked') + '" data-lv="' + i + '"' + (open ? '' : ' disabled') + '>' +
+          '<span class="lv-no">' + String(i + 1).padStart(2, '0') + '</span>' +
+          '<span class="lv-name">' + lv.name + '</span>' +
+          '<span class="lv-spec">' + lv.rows + '×' + lv.cols + ' · ' + lv.mines + ' 雷 · ' + lv.time + 's</span>' +
+          '<span class="lv-stars">' + stars + '</span>' + tag +
+          (open ? '' : '<span class="lv-lock"><svg viewBox="0 0 24 24"><rect x="4.6" y="10.4" width="14.8" height="10" rx="2.4"/><path d="M8.2 10.4V7.6a3.8 3.8 0 0 1 7.6 0v2.8"/></svg></span>') +
+          '</button>';
+      }
+      html += '</div></div>';
+    });
+    campList.innerHTML = html;
+
+    const total = LV_TOTAL * 3;
+    const got = campTotalStars();
+    campSub.textContent = '5 章 ' + LV_TOTAL + ' 关 · 已通关 ' + campClearedCount() + ' 关 · ' + got + ' / ' + total + ' ★';
+    campBarEl.style.width = Math.round(got / total * 100) + '%';
+    campPct.textContent = Math.round(got / total * 100) + '%';
+  }
+
+  function openCampPanel() {
+    closePanels();
+    renderCampPanel();
+    campPanel.hidden = false;
+  }
+
+  /* ---------------- 战役：启动 / 退出 ---------------- */
+  function startCampaign(i) {
+    const lv = LV_FLAT[i];
+    if (!lv) return;
+    if (!campUnlocked(i)) {
+      flashNote('先通关上一关才能解锁这一关');
+      sfx('nope');
+      return;
+    }
+    leaveRanked();
+    leaveDaily();
+    if (!campaignMode) {
+      customBackup = { rows: custom.rows, cols: custom.cols, mines: custom.mines, cell: custom.cell };
+      noGuessBeforeCamp = noGuess;
+    }
+    campaignMode = true;
+    campaignIdx = i;
+    const cell = lv.cols >= 26 ? 30 : (lv.rows >= 20 ? 26 : 34);
+    custom = { rows: lv.rows, cols: lv.cols, mines: lv.mines, cell: cell };
+    level = 'custom';
+    noGuess = lv.noguess ? true : noGuessBeforeCamp;
+    campPanel.hidden = true;
+    hideLevelSettle();
+    newGame();
+  }
+
+  function leaveCampaign() {
+    if (!campaignMode) return;
+    campaignMode = false;
+    campaignIdx = -1;
+    if (customBackup) { custom = customBackup; customBackup = null; }
+    noGuess = noGuessBeforeCamp;
+    if (ngToggle) ngToggle.disabled = ranked || dailyMode;
+    hideLevelSettle();
+    updateCampMini();
+  }
+
+  function campTimeout() {
+    if (!G || G.over) return;
+    G.over = true;
+    G.won = false;
+    stopTimer();
+    setTimer(Math.min(999, G.limit));
+    setFace('⏱');
+    paint();
+    boardEl.classList.remove('lose');
+    void boardEl.offsetWidth;
+    boardEl.classList.add('lose');
+    sfx('lose');
+    lastResult = { win: false, secs: G.limit };
+    finishGame(false, G.limit, false, 'timeout');   // 超时不记「踩雷」
+    showToast('⏱ 时间到', '本关限时 ' + G.limit + ' 秒，再试一次');
+  }
+
+  /* ---------------- 关卡结算 ---------------- */
+  function showLevelSettle(i, stars, secs, lv) {
+    const tk = ++lsToken;
+    lsKicker.textContent = stars === 3 ? 'PERFECT · 三星通关' : 'CLEAR · 通关';
+    lsTitle.textContent = lv.name;
+    Array.prototype.forEach.call(lsStars.children, function (el, k) {
+      el.classList.remove('on');
+      if (k < stars) {
+        setTimeout(function () {
+          if (tk === lsToken) el.classList.add('on');   // 已重打/换关就别再点亮旧星星
+        }, 180 + k * 190);
+      }
+    });
+    const best = campStarsArr()[i] || 0;
+    lsSub.innerHTML = '第 <b>' + (i + 1) + '</b> 关 · 用时 <b>' + secs + '</b>s · 目标 <b>' +
+      lv.time + '</b>s' + (stars < 3 ? ' · 最佳 <b>' + Math.max(best, stars) + '</b>★' : ' · 满星');
+    document.getElementById('lsNext').textContent = (i + 1 >= LV_TOTAL) ? '全部完成' : '下一关';
+    lvlSettle.hidden = false;
+    sfx(stars === 3 ? 'star' : 'win');
+  }
+  function hideLevelSettle() {
+    lsToken++;
+    if (lvlSettle) lvlSettle.hidden = true;
+  }
+
+  /* ---------------- 数据统计 ---------------- */
+  function pushRecentStat(win, lvKey, secs) {
+    const s = profile.stats;
+    if (!Array.isArray(s.recent)) s.recent = [];
+    s.recent.unshift({ w: win ? 1 : 0, lv: lvKey, t: Math.max(0, Math.round(secs)), bv: G ? (G.bv || 0) : 0 });
+    if (s.recent.length > 30) s.recent.length = 30;
+    s.totalSecs = Math.max(0, (s.totalSecs || 0) + Math.round(secs));
+    if (win && G && G.bv > 0 && secs > 0) {
+      const bvps = Math.round((G.bv / secs) * 100) / 100;
+      if (bvps > (s.bestBvps || 0)) s.bestBvps = bvps;
+    }
+  }
+
+  function fmtDur(totalSecs) {
+    const s = Math.round(totalSecs || 0);
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h' + (m % 60) + 'm';
+    return Math.floor(h / 24) + 'd' + (h % 24) + 'h';
+  }
+
+  function chartHtml() {
+    const W = 452, H = 136, pl = 34, pr = 8, pt = 12, pb = 18;
+    const iw = W - pl - pr, ih = H - pt - pb;
+    const list = (profile.stats.recent || []).slice().reverse();
+
+    if (!list.length) {
+      return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="暂无数据">' +
+        '<text x="' + (W / 2) + '" y="' + (H / 2 + 4) + '" text-anchor="middle" font-size="11" class="ch-empty">还没有对局记录</text></svg>';
+    }
+    const maxT = Math.max(20, list.reduce(function (m, x) { return Math.max(m, x.t || 0); }, 0));
+
+    let g = '';
+    for (let k = 0; k <= 2; k++) {
+      const v = maxT * k / 2;
+      const y = pt + ih - (v / maxT) * ih;
+      g += '<line x1="' + pl + '" y1="' + y.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + y.toFixed(1) +
+        '" stroke="currentColor" stroke-opacity=".12" stroke-width="1"/>';
+      g += '<text x="' + (pl - 5) + '" y="' + (y + 3.2).toFixed(1) + '" text-anchor="end" font-size="8.6" fill="currentColor" fill-opacity=".7">' +
+        Math.round(v) + 's</text>';
+    }
+
+    const n = list.length;
+    const step = iw / n;
+    const bw = Math.max(3, Math.min(12, step - 2.5));
+    let bars = '';
+    list.forEach(function (x, i) {
+      const h = Math.max(2, ((x.t || 0) / maxT) * ih);
+      const bx = pl + i * step + (step - bw) / 2;
+      const by = pt + ih - h;
+      const col = x.w ? (LV_COLOR[x.lv] || '#8b95a4') : '#e8aaa6';
+      bars += '<rect x="' + bx.toFixed(1) + '" y="' + by.toFixed(1) + '" width="' + bw.toFixed(1) +
+        '" height="' + h.toFixed(1) + '" rx="2" fill="' + col + '" opacity="' + (x.w ? '0.9' : '0.62') + '"/>';
+      if (!x.w) {
+        bars += '<circle cx="' + (bx + bw / 2).toFixed(1) + '" cy="' + (by - 3.2).toFixed(1) +
+          '" r="1.7" fill="#d9534f"/>';
+      }
+    });
+
+    const base = '<line x1="' + pl + '" y1="' + (pt + ih) + '" x2="' + (W - pr) + '" y2="' + (pt + ih) +
+      '" stroke="currentColor" stroke-opacity=".22" stroke-width="1"/>';
+
+    const used = {};
+    list.forEach(function (x) { used[x.lv] = 1; });
+    let legend = '';
+    Object.keys(LV_COLOR).forEach(function (k) {
+      if (!used[k]) return;
+      legend += '<span><i style="background:' + LV_COLOR[k] + '"></i>' + (LV_LABEL[k] || k) + '</span>';
+    });
+    legend += '<span><i style="background:#e8aaa6"></i>失败</span>';
+
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="最近对局用时柱状图">' +
+      g + bars + base + '</svg><div class="chart-legend">' + legend + '</div>';
+  }
+
+  function wrHtml() {
+    const wl = profile.stats.wl || {};
+    const order = ['beginner', 'intermediate', 'expert', 'custom', 'campaign'];
+    let html = '';
+    order.forEach(function (k) {
+      const b = wl[k];
+      if (!b || (!b.w && !b.l)) {
+        if (k === 'campaign' || k === 'custom') return;
+      }
+      const w = (b && b.w) || 0, l = (b && b.l) || 0;
+      const tot = w + l;
+      const pct = tot ? Math.round(w / tot * 100) : 0;
+      // 没打过时不要画一条满格灰条（看起来像 100% 失败）
+      const bar = tot
+        ? '<i class="w" style="width:' + pct + '%"></i><i class="l" style="width:' + (100 - pct) + '%"></i>'
+        : '';
+      html += '<div class="wr-row"><span class="wr-l">' + LV_LABEL[k] + '</span>' +
+        '<span class="wr-bar' + (tot ? '' : ' empty') + '">' + bar + '</span>' +
+        '<span class="wr-v">' + (tot ? pct + '% · ' + w + '/' + tot : '—') + '</span></div>';
+    });
+    return html;
+  }
+
+  function bestTableHtml() {
+    let html = '<span class="bt-h">难度</span><span class="bt-h" style="text-align:right">普通</span><span class="bt-h" style="text-align:right">无猜</span>';
+    ['beginner', 'intermediate', 'expert'].forEach(function (k) {
+      const a = bests[k], b = bests[k + '|ng'];
+      html += '<span class="bt-l">' + LV_LABEL[k] + '</span>' +
+        '<span class="bt-v' + (a == null ? ' none' : '') + '">' + (a == null ? '--:--' : fmtTime(a)) + '</span>' +
+        '<span class="bt-v' + (b == null ? ' none' : '') + '">' + (b == null ? '--:--' : fmtTime(b)) + '</span>';
+    });
+    return html;
+  }
+
+  function settingsHtml() {
+    return '<div class="set-row">' +
+      '<div><div class="sr-t">数字配色</div><div class="sr-d">色盲模式用蓝 / 橙 / 绿 / 紫替代红绿区分</div></div>' +
+      '<div class="seg-mini" data-role="numstyle">' +
+        '<button data-v="classic"' + (numStyle === 'classic' ? ' class="active"' : '') + '>经典</button>' +
+        '<button data-v="cb"' + (numStyle === 'cb' ? ' class="active"' : '') + '>色盲</button>' +
+      '</div></div>';
+  }
+
+  function renderStatsPanel() {
+    const s = profile.stats;
+    const games = s.games || 0;
+    const rate = games ? Math.round((s.wins || 0) / games * 1000) / 10 : 0;
+
+    statSubEl.textContent = games
+      ? '累计 ' + games + ' 局 · 胜率 ' + rate + '% · 总时长 ' + fmtDur(s.totalSecs)
+      : '还没有对局记录';
+
+    statBig.innerHTML =
+      '<div class="sb-item"><b>' + games + '</b><span>总场次</span></div>' +
+      '<div class="sb-item"><b>' + rate + '%</b><span>胜率</span></div>' +
+      '<div class="sb-item"><b>' + (s.bestStreak || 0) + '</b><span>最长连胜</span></div>' +
+      '<div class="sb-item"><b>' + fmtDur(s.totalSecs) + '</b><span>总时长</span></div>';
+
+    statChart.innerHTML = chartHtml();
+    statWr.innerHTML = wrHtml();
+    statBest.innerHTML = bestTableHtml();
+    statSet.innerHTML = settingsHtml();
+  }
+
+  function openStatsPanel() {
+    closePanels();
+    renderStatsPanel();
+    statsPanel.hidden = false;
+  }
+
+  /* ---------------- 数字配色 ---------------- */
+  function applyNumStyle(v) {
+    numStyle = (v === 'cb') ? 'cb' : 'classic';
+    document.documentElement.setAttribute('data-numstyle', numStyle);
+    try { localStorage.setItem(NUMS_KEY, numStyle); } catch (e) {}
+  }
+  function loadNumStyle() {
+    let v = 'classic';
+    try { v = localStorage.getItem(NUMS_KEY) || 'classic'; } catch (e) {}
+    applyNumStyle(v);
+  }
+
+  /* ---------------- 战役 / 统计：事件 ---------------- */
+  campBtn.addEventListener('click', openCampPanel);
+  statsBtn.addEventListener('click', openStatsPanel);
+  document.getElementById('campClose').addEventListener('click', function () { campPanel.hidden = true; });
+  document.getElementById('statsClose').addEventListener('click', function () { statsPanel.hidden = true; });
+  campPanel.addEventListener('click', function (e) { if (e.target === campPanel) campPanel.hidden = true; });
+  statsPanel.addEventListener('click', function (e) { if (e.target === statsPanel) statsPanel.hidden = true; });
+
+  campList.addEventListener('click', function (e) {
+    const b = (e.target && e.target.closest) ? e.target.closest('.lv-card') : null;
+    if (!b || b.disabled) return;
+    startCampaign(+b.dataset.lv);
+  });
+
+  document.getElementById('lsNext').addEventListener('click', function () {
+    const nx = campaignIdx + 1;
+    if (nx < LV_TOTAL) { startCampaign(nx); return; }
+    hideLevelSettle();
+    leaveCampaign();
+    openCampPanel();
+  });
+  document.getElementById('lsRetry').addEventListener('click', function () {
+    if (campaignIdx >= 0) startCampaign(campaignIdx);
+  });
+  document.getElementById('lsBack').addEventListener('click', function () {
+    hideLevelSettle();
+    openCampPanel();
+  });
+
+  statSet.addEventListener('click', function (e) {
+    const b = (e.target && e.target.closest) ? e.target.closest('button[data-v]') : null;
+    if (!b) return;
+    applyNumStyle(b.dataset.v);
+    renderStatsPanel();
+  });
+
+  /* ---------------- 每日挑战数据 ---------------- */
+  function ensureDaily() {
+    let d = profile.daily;
+    if (!d || typeof d !== 'object') { d = profile.daily = {}; }
+    if (!d.hist || typeof d.hist !== 'object') d.hist = {};
+    d.streak = Math.max(0, intOr(d.streak, 0));
+    d.best = Math.max(0, intOr(d.best, 0));
+    d.last = typeof d.last === 'string' ? d.last : '';
+    // 断签了就别再显示旧的连续天数：只有「今天或昨天」通过关才算还连着
+    if (d.last && d.last !== keyOfStamp(todayStamp()) && d.last !== keyOfStamp(yesterdayStamp())) {
+      d.streak = 0;
+    }
+    const keys = Object.keys(d.hist).sort();
+    while (keys.length > 70) delete d.hist[keys.shift()];
+    return d;
+  }
+  function dailyEntry(stamp) {
+    return ensureDaily().hist[keyOfStamp(stamp)] || null;
+  }
+  function recordDaily(win, secs) {
+    const d = ensureDaily();
+    const key = keyOfStamp(dailyStamp || todayStamp());
+    const prev = d.hist[key];
+    if (win) {
+      if (!prev || !prev.w || secs < prev.s) d.hist[key] = { w: 1, s: secs };
+      if (!prev || !prev.w) {
+        if (d.last === keyOfStamp(yesterdayStamp())) d.streak = Math.max(1, d.streak) + 1;
+        else if (d.last !== key) d.streak = 1;
+        d.last = key;
+      }
+      if (!d.best || secs < d.best) d.best = secs;
+    } else if (!prev) {
+      d.hist[key] = { w: 0, s: secs };
+    }
+    saveProfile();
+    updateDailyChip();
+  }
+  function updateDailyChip() {
+    const e = dailyEntry(todayStamp());
+    dailyMini.textContent = (e && e.w) ? '已完成 ' + e.s + 's' : (e ? '再试一次' : '未挑战');
+  }
+
+  function statItem(v, label) {
+    return '<div class="rs-item"><b>' + v + '</b><span>' + label + '</span></div>';
+  }
+  function renderDailyPanel() {
+    const d = ensureDaily();
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const todayKey = keyOfStamp(y * 10000 + (m + 1) * 100 + now.getDate());
+
+    dhDay.textContent = (m + 1) + ' 月 ' + now.getDate() + ' 日';
+    dhStreak.textContent = String(d.streak);
+    dailyNote.textContent = d.best
+      ? ('个人最佳 ' + d.best + ' 秒 · 每天 0 点刷新')
+      : '每天 0 点刷新 · 16×16 / 40 雷 · 首点 3×3 保护';
+
+    const lead = (new Date(y, m, 1).getDay() + 6) % 7;
+    const days = new Date(y, m + 1, 0).getDate();
+    let html = '';
+    ['一', '二', '三', '四', '五', '六', '日'].forEach(function (w) {
+      html += '<div class="dc-week">' + w + '</div>';
+    });
+    for (let i = 0; i < lead; i++) html += '<div class="dc-cell off"></div>';
+    for (let day = 1; day <= days; day++) {
+      const k = keyOfStamp(y * 10000 + (m + 1) * 100 + day);
+      const e = d.hist[k];
+      let cls = 'dc-cell';
+      if (e) cls += e.w ? ' done' : ' fail';
+      if (k === todayKey) cls += ' today';
+      html += '<div class="' + cls + '">' + day + '</div>';
+    }
+    dailyCal.innerHTML = html;
+
+    const won = Object.keys(d.hist).filter(function (k) { return d.hist[k].w; });
+    const monthWon = won.filter(function (k) { return k.slice(0, 7) === todayKey.slice(0, 7); }).length;
+    const best = won.length ? Math.min.apply(null, won.map(function (k) { return d.hist[k].s; })) : 0;
+    dailyStats.innerHTML =
+      statItem(d.streak, '连续天数') +
+      statItem(won.length, '累计完成') +
+      statItem(monthWon, '本月完成') +
+      statItem(best ? best + 's' : '—', '最快纪录');
+  }
+  function openDailyPanel() {
+    closePanels();
+    renderDailyPanel();
+    dailyPanel.hidden = false;
+  }
+  function startDaily() {
+    leaveRanked();
+    leaveCampaign();          // 战役残留会让每日局带上限时与 campaign 统计桶
+    if (!dailyMode) noGuessBeforeDaily = noGuess;
+    dailyMode = true;
+    dailyStamp = todayStamp();
+    noGuess = false;
+    level = 'intermediate';
+    closePanels();
+    hideSettle();
+    newGame();
+  }
+  function leaveDaily() {
+    if (!dailyMode) return;
+    dailyMode = false;
+    noGuess = noGuessBeforeDaily;
+    if (ngToggle) ngToggle.disabled = ranked || campaignMode;
+  }
+
+  /* ---------------- 分享 ---------------- */
+  function levelName() {
+    if (campaignMode && LV_FLAT[campaignIdx]) {
+      return '战役 ' + (campaignIdx + 1) + ' · ' + LV_FLAT[campaignIdx].name;
+    }
+    if (dailyMode) return '每日挑战 ' + keyOfStamp(dailyStamp);
+    if (level === 'custom') return '自定义 ' + custom.rows + '×' + custom.cols + ' / ' + custom.mines;
+    return ({ beginner: '初级 9×9 / 10', intermediate: '中级 16×16 / 40', expert: '高级 16×30 / 99' })[level] || level;
+  }
+  function buildShareText(win, secs) {
+    const bv = (G && G.bv) || 0;
+    const eff = secs >= 1 ? (bv / secs).toFixed(2) : '—';
+    const head = dailyMode
+      ? '扫雷 · 每日挑战 ' + keyOfStamp(dailyStamp || todayStamp())
+      : '扫雷 · ' + levelName() + (ranked ? ' · 排位' : '');
+    const lines = [head, (win ? '✅ 通关' : '💥 阵亡') + ' · ' + secs + ' 秒'];
+    lines.push('3BV ' + bv + ' · 效率 ' + eff + ' 格/秒');
+    if (dailyMode) lines.push('🔥 已连续打卡 ' + ensureDaily().streak + ' 天');
+    else if (ranked) lines.push('段位 ' + rankLabel(profile.rank));
+    return lines.join('\n');
+  }
+  function legacyCopy(t) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = t;
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand && document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (e) { return false; }
+  }
+  function copyText(t) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(t).then(function () { return true; })
+        .catch(function () { return legacyCopy(t); });
+    }
+    return Promise.resolve(legacyCopy(t));
+  }
+  function doShare(fromSettle) {
+    const r = lastResult;
+    if (!r) { flashNote('还没有可分享的战绩'); return; }
+    copyText(buildShareText(r.win, r.secs)).then(function (ok) {
+      if (fromSettle) {
+        stShare.textContent = ok ? '已复制 ✓' : '复制失败';
+        setTimeout(function () { stShare.textContent = '复制战绩'; }, 1800);
+      } else {
+        // 临时改写副标题，随后还原，避免把「用时 X 秒」永久覆盖掉
+        const old = toastSub.textContent;
+        toastSub.textContent = ok ? '战绩已复制到剪贴板' : '复制失败，请手动截图';
+        setTimeout(function () {
+          if (toast.classList.contains('show')) toastSub.textContent = old;
+        }, 1600);
+      }
+      flashNote(ok ? '战绩已复制，去炫耀一下' : '复制失败');
+    });
+  }
+
+  /* ---------------- 键盘光标 ---------------- */
+  function moveCursor(dr, dc) {
+    if (!G) return;
+    // 第一次按键就把光标放到中心并立刻按方向移动一格，避免「按了没反应」
+    const base = cursorIdx < 0
+      ? Math.floor(G.rows / 2) * G.cols + Math.floor(G.cols / 2)
+      : cursorIdx;
+    let r = Math.floor(base / G.cols) + dr;
+    let c = base % G.cols + dc;
+    r = Math.max(0, Math.min(G.rows - 1, r));
+    c = Math.max(0, Math.min(G.cols - 1, c));
+    cursorIdx = r * G.cols + c;
+    paintCursor();
+  }
+  function paintCursor() {
+    for (let i = 0; i < els.length; i++) {
+      if (els[i]) els[i].classList.toggle('cursor', i === cursorIdx);
+    }
+  }
+
+  /* ---------------- 事件 ---------------- */
+  dailyBtn.addEventListener('click', openDailyPanel);
+  rankBtn.addEventListener('click', function () { dailyPanel.hidden = true; openRankPanel(); });
+  achBtn.addEventListener('click', function () { dailyPanel.hidden = true; openAchPanel(); });
+  document.getElementById('dailyClose').addEventListener('click', function () { dailyPanel.hidden = true; });
+  dailyPanel.addEventListener('click', function (e) { if (e.target === dailyPanel) dailyPanel.hidden = true; });
+  document.getElementById('dailyStart').addEventListener('click', startDaily);
+  hintBtn.addEventListener('click', giveHint);
+  soundBtn.addEventListener('click', function () { setSound(!soundOn); });
+  themeBtn.addEventListener('click', toggleTheme);
+  stShare.addEventListener('click', function () { doShare(true); });
+  toastShare.addEventListener('click', function () { doShare(false); });
+
+  /* ---------------- 初始化 ---------------- */
+  loadTheme();
+  loadNumStyle();
+  setSound(soundOn, true);
+  ensureSeason();
+  updateRankChip();
+  updateAchChip();
+  ensureDaily();
+  updateDailyChip();
+  updateCampMini();
+
+  /* ---------------- 启动 ---------------- */
+  newGame();
+})();
+</script>
+</body>
+</html>
